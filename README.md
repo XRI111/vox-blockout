@@ -125,6 +125,10 @@ curl -fsSL https://raw.githubusercontent.com/wassermanproductions/blockout/main/
 You can also grab the macOS DMG there, or build from source — see the note
 about unsigned builds below.
 
+**Linux — build from source**: see [docs/INSTALL-linux.md](docs/INSTALL-linux.md)
+(Mint / Ubuntu 24.04+ steps and troubleshooting, contributed by
+[@erosDiffusion](https://github.com/erosDiffusion)).
+
 <div align="center">
 
 <img src="docs/images/blockout-windows.png" alt="Blockout for Windows 11" width="300" />
