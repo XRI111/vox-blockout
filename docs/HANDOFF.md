@@ -225,6 +225,24 @@ The plan asks for `clay.png`, `depth.png`, `normal.png`, `lineart.png`, `product
   blocking track (`exporter.ts:182-198`), so a static product with no marks does not appear at all; and
   it records neither the export resolution nor any safe-zone rect.
 
+### Known issues found while building, not yet fixed
+
+Found in passing during Phase 1 items 1 and 2. Neither is in the scope of the item that surfaced it,
+so both are recorded rather than silently dropped.
+
+- **The Blender handoff never contains imported models.** `exportGlb` (`export/gltf.ts:19-46`)
+  rebuilds the scene from `buildAsset` rather than from the live SceneManager, so a custom GLB is
+  replaced by its person-scale placeholder box in the `.glb` export. Separate code path from the
+  render exports fixed in item 2. Low priority: the pilot is stills, and the Blender handoff is not on
+  the AW path at all.
+- **Two playhead stills in the same second overwrite each other.** `exportStillAtPlayhead`
+  (`exporter.ts:409`) names the file from shot, playhead time and a second-resolution timestamp, so
+  exporting the same frame twice inside one second silently replaces the first. Cost me a wrong test
+  result before I spotted it. One-line fix whenever that file is next open.
+- **`perf.spec.ts` cannot run under software GL.** It asserts 50 entities hold >50 fps and SwiftShader
+  manages 2.4. Expected, not a regression: run it on a machine with a GPU. CI's `native-smoke` job
+  does not include it.
+
 ### Proposed Phase 1 scope (superseded)
 
 The scope I proposed here on 2026-09-22 was overridden by Stephane the same day. The gap audit above
@@ -403,3 +421,4 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 | 2026-09-22 | MCP live | `claude mcp add blockout` connected. Drove the running app over the bridge: `initialize`, `tools/list` (34 tools, docs say 33), `get_state`, `add_entity` placing a labelled suitcase, `get_state` confirming it. |
 | 2026-09-22 | Audit done, blocked on go-ahead | Gap audit written into this file with file:line citations. Phase 1 scope proposed with build order and effort: spike first, Shopify import deferred, shot list trimmed to five. Not starting Phase 1. Blocking question: which image model does AW use? |
 | 2026-09-22 | Scope changed by owner, docs updated | Stephane: product fidelity is not a goal, primitives at correct real-world dimensions are enough, appearance comes from reference images. System must scale across AW clients (luggage, cosmetics, odd-shaped appliances). Cut: fidelity spike, image-to-3D, clay override, unit-aware GLB scaling, soft-body cubes. Deferred: lineart pass, product-mask pass, Shopify import. Key decisions and Build plan rewritten. Phase 1 is now 7 items, re-estimated at 7.75d from 13.5d. || 2026-09-22 | Item 1 shipped, verified | Env-gated software GL. `src/shared/software-gl.ts` (new, pure, unit-tested) plus two lines in `src/main/index.ts`. Default off. Verified in this container: flag off gives `NO WEBGL`, flag on gives WebGL 2.0 through SwiftShader, and `BLOCKOUT_SOFTWARE_GL=1 npm run smoke` is 6/6. typecheck, lint and 890/890 unit tests green. Logged in `MODIFICATIONS.md`. Branch `aw/software-gl`. |
+| 2026-09-22 | Item 2 shipped, verified | Imported models now reach exports. Found and fixed a bigger bug than the planned race: the Library imports in two mutations (addEntity, then attach `sourceFile`), and the load only fired on visual creation, so an imported GLB stayed invisible for the whole session until the project was reopened. Added `ensureCustomModel` (idempotent, guards retry storms) plus `settleAsyncLoads()` awaited by `exportShot`, `exportStillAtPlayhead` and `exportContactSheet`. `GLTFLoader.parse` now has an error callback so a malformed file cannot wedge an export. `.obj` removed from the import picker: one line against ~15 to wire `OBJLoader`, and the picker was advertising a format that always failed to parse. New `tests/e2e/import-await.spec.ts` builds a minimal GLB fixture, exports in the same tick as the import, and decodes the PNG with ffmpeg to assert the mesh's own colour is in frame 0. Verified it fails with either fix removed. typecheck, lint, 890/890 unit, 72/73 e2e green (`perf.spec.ts` needs a GPU). Branch `aw/import-await`. |

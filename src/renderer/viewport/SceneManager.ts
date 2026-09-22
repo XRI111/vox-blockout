@@ -53,6 +53,15 @@ interface EntityVisual {
   root: THREE.Group
   label?: THREE.Sprite
   customLoaded?: boolean
+  /**
+   * The `sourceFile` this visual has already started loading. Guards against
+   * re-loading on every store sync, and against retry storms after a file
+   * fails to parse. Re-pointing an entity at a different file changes this
+   * value and legitimately triggers a fresh load.
+   */
+  customSource?: string
+  /** The loaded glTF root, removed before a replacement is added. */
+  customObject?: THREE.Object3D
 }
 
 export type RenderPass = 'clean' | 'depth' | 'normal'
@@ -142,6 +151,14 @@ export class SceneManager {
   private unsubscribers: (() => void)[] = []
   /** True while an export owns the scene — the live loop stands down. */
   suspendLive = false
+
+  /**
+   * In-flight asynchronous asset loads (imported GLB/glTF models). Custom
+   * models arrive over IPC, so an export started right after an import would
+   * otherwise render frames before the mesh exists. Every export path awaits
+   * `settleAsyncLoads()` first; entries remove themselves when they settle.
+   */
+  private pendingLoads = new Set<Promise<void>>()
 
   /** Imported 3D scans (Gaussian splats). Editor staging only: hidden from
    *  every export pass — worker-based splat sorting cannot guarantee the
@@ -392,6 +409,11 @@ export class SceneManager {
         existing.entity = entity
         this.applyEntityBase(existing)
         this.syncLabel(existing)
+        // The Library imports in two steps: addEntity, then a mutate that
+        // attaches sourceFile. At creation time there was nothing to load, so
+        // without this the model stayed invisible until the project was
+        // reopened.
+        this.ensureCustomModel(existing)
       }
     }
 
@@ -551,29 +573,81 @@ export class SceneManager {
     this.visuals.set(entity.id, visual)
     this.applyEntityBase(visual)
     this.syncLabel(visual)
-    if (entity.assetId.startsWith('custom.') && entity.sourceFile) {
-      void this.loadCustomModel(visual)
+    this.ensureCustomModel(visual)
+  }
+
+  /**
+   * Start loading this visual's imported model if it has one and we have not
+   * already started that exact file. Idempotent, so every store sync can call
+   * it.
+   */
+  private ensureCustomModel(visual: EntityVisual): void {
+    const { assetId, sourceFile } = visual.entity
+    if (!assetId.startsWith('custom.') || !sourceFile) return
+    if (visual.customSource === sourceFile) return
+    visual.customSource = sourceFile
+    this.track(this.loadCustomModel(visual, sourceFile))
+  }
+
+  /**
+   * Register an in-flight asset load so exports can wait for it. The promise
+   * never rejects (loadCustomModel reports its own failures), so a broken
+   * import degrades to a missing mesh rather than a stuck export.
+   */
+  private track(load: Promise<void>): void {
+    this.pendingLoads.add(load)
+    void load.finally(() => this.pendingLoads.delete(load))
+  }
+
+  /**
+   * Resolve once no imported model is still loading. Export and stills paths
+   * call this before rendering the first frame; without it a package exported
+   * immediately after an import silently omits the product, because the model
+   * is read over IPC and cannot land in the same tick.
+   *
+   * Loops rather than awaiting once: a load can be queued while an earlier one
+   * is still settling.
+   */
+  async settleAsyncLoads(): Promise<void> {
+    while (this.pendingLoads.size > 0) {
+      await Promise.allSettled([...this.pendingLoads])
     }
   }
 
-  private async loadCustomModel(visual: EntityVisual): Promise<void> {
+  private async loadCustomModel(visual: EntityVisual, rel: string): Promise<void> {
     const folder = this.currentState().projectFolder
-    const rel = visual.entity.sourceFile
-    if (!folder || !rel) return
+    if (!folder) return
     try {
       const buf = await window.blockout.readProjectFile(folder, rel)
-      const loader = new GLTFLoader()
-      loader.parse(buf, '', (gltf) => {
-        if (this.disposed || !this.visuals.has(visual.entity.id)) return
-        visual.root.remove(visual.built.group)
-        gltf.scene.traverse((o) => {
-          if (o instanceof THREE.Mesh) {
-            o.castShadow = true
-            o.receiveShadow = true
+      // parse() is callback-based; wrap it so the caller's promise stays
+      // pending until the mesh is actually in the scene graph.
+      await new Promise<void>((resolve) => {
+        new GLTFLoader().parse(
+          buf,
+          '',
+          (gltf) => {
+            if (this.disposed || !this.visuals.has(visual.entity.id)) return resolve()
+            visual.root.remove(visual.built.group)
+            // Re-pointing at a different file must replace, not stack.
+            if (visual.customObject) visual.root.remove(visual.customObject)
+            gltf.scene.traverse((o) => {
+              if (o instanceof THREE.Mesh) {
+                o.castShadow = true
+                o.receiveShadow = true
+              }
+            })
+            visual.root.add(gltf.scene)
+            visual.customObject = gltf.scene
+            visual.customLoaded = true
+            resolve()
+          },
+          (err) => {
+            // A malformed file must not wedge an export behind a promise that
+            // never settles, so report and carry on with the placeholder box.
+            useStore.getState().toast(`Could not load model: ${String(err)}`, 'error')
+            resolve()
           }
-        })
-        visual.root.add(gltf.scene)
-        visual.customLoaded = true
+        )
       })
     } catch (e) {
       useStore.getState().toast(`Could not load model: ${String(e)}`, 'error')

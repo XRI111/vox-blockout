@@ -699,8 +699,11 @@ export function Library(): JSX.Element {
   }
 
   const onImport = async (): Promise<void> => {
+    // glTF only: GLTFLoader is the sole loader wired up, so offering .obj here
+    // just produced a copied file that failed to parse. Wiring OBJLoader is
+    // ~15 lines if a client ever ships OBJ; converting to .glb is easier.
     const path = await window.blockout.pickFile([
-      { name: '3D Models', extensions: ['glb', 'gltf', 'obj'] }
+      { name: '3D Models', extensions: ['glb', 'gltf'] }
     ])
     if (!path) return
     if (!projectFolder) {
