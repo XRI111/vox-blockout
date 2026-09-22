@@ -6,6 +6,7 @@
  */
 
 import type { EntityCategory } from './types'
+import { allProducts, isProductAssetId, presetIdFromAssetId, productAssetId, resolveProduct } from './products'
 
 export type Motion = 'biped' | 'quadruped' | 'wheeled' | 'rail' | 'flying' | 'static'
 
@@ -266,9 +267,44 @@ export const ASSET_CATALOG: AssetSpec[] = [
 
 const byId = new Map(ASSET_CATALOG.map((a) => [a.id, a]))
 
+/**
+ * AW fork: product presets appear in the catalog as `product.<presetId>`.
+ * Derived rather than hardcoded so a project can add or override a preset
+ * without touching this file. Dimensions come from the resolved geometry, so
+ * auto-framing and label placement get the real size of a 3-inch compact
+ * instead of the person-scale fallback below.
+ */
+export function productAssetSpecs(): AssetSpec[] {
+  return allProducts().map((preset) => {
+    const r = resolveProduct(preset)
+    return {
+      id: productAssetId(preset.id),
+      name: preset.name,
+      category: 'props' as EntityCategory,
+      height: r.height,
+      footprint: r.footprint,
+      speedScale: 0,
+      motion: 'static' as Motion,
+      promptNoun: preset.promptNoun
+    }
+  })
+}
+
+/** Catalog plus product presets. Use this anywhere the UI lists placeables. */
+export function placeableAssets(): AssetSpec[] {
+  return [...ASSET_CATALOG, ...productAssetSpecs()]
+}
+
 export function assetSpec(assetId: string): AssetSpec {
   const spec = byId.get(assetId)
   if (spec) return spec
+  if (isProductAssetId(assetId)) {
+    const found = productAssetSpecs().find((a) => a.id === assetId)
+    if (found) return found
+    // A project preset that was removed: fall through to the placeholder so
+    // an old project still opens instead of throwing.
+    void presetIdFromAssetId(assetId)
+  }
   // Custom imports and unknown ids degrade gracefully to a person-scale box.
   return {
     id: assetId,

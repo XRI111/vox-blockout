@@ -31,6 +31,8 @@ export interface BlockoutAPI {
   importScan(folder: string, sourcePath: string): Promise<{ relativePath: string; name: string }>
   importReference(folder: string, sourcePath: string): Promise<{ relativePath: string; name: string }>
   readProjectFile(folder: string, relativePath: string): Promise<ArrayBuffer>
+  /** AW fork: raw text of every JSON file in <project>/products/. */
+  loadProjectProducts(folder: string): Promise<string[]>
   showFolder(path: string): Promise<void>
   openExternal(url: string): Promise<boolean>
   exportBegin(
@@ -105,6 +107,7 @@ const api: BlockoutAPI = {
   importScan: (folder, sourcePath) => ipcRenderer.invoke('scan:import', folder, sourcePath),
   importReference: (folder, sourcePath) => ipcRenderer.invoke('project:importReference', folder, sourcePath),
   readProjectFile: (folder, rel) => ipcRenderer.invoke('file:readAbsolute', folder, rel),
+  loadProjectProducts: (folder) => ipcRenderer.invoke('products:loadProject', folder),
   showFolder: (path) => ipcRenderer.invoke('shell:showFolder', path),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   exportBegin: (jobId, outPath, opts) => ipcRenderer.invoke('export:begin', jobId, outPath, opts),

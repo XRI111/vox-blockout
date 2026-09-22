@@ -25,7 +25,8 @@ import {
   horizontalFov,
   verticalFov
 } from '@engine/camera'
-import { entityHeight } from '@engine/assets'
+import { assetSpec, entityHeight } from '@engine/assets'
+import { isProductAssetId } from '@engine/products'
 import { headingOf } from '@engine/path'
 import { CAMERA_MOVE_PRESETS } from '@engine/camera-moves'
 import type { Entity, LightingPresetId, Scene as DocScene, Shot } from '@engine/types'
@@ -65,6 +66,29 @@ interface EntityVisual {
 }
 
 export type RenderPass = 'clean' | 'depth' | 'normal'
+
+const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), hi)
+
+/**
+ * Nearest 1-2-5 step at or below `target`, so grid spacing lands on numbers a
+ * person reads as round (1 mm, 2 mm, 5 mm, 1 cm …) instead of 3.7 mm.
+ */
+function niceStep(target: number): number {
+  const safe = Math.max(target, 1e-4)
+  const decade = Math.pow(10, Math.floor(Math.log10(safe)))
+  const n = safe / decade
+  const mantissa = n >= 5 ? 5 : n >= 2 ? 2 : 1
+  return mantissa * decade
+}
+
+/** Grid at a given cell size, kept to a fixed division count so it stays cheap. */
+function makeGrid(cell: number): THREE.GridHelper {
+  const divisions = 60
+  const grid = new THREE.GridHelper(cell * divisions, divisions, 0x33343a, 0x27282d)
+  ;(grid.material as THREE.Material).transparent = true
+  ;(grid.material as THREE.Material).opacity = 0.6
+  return grid
+}
 
 export class SceneManager {
   readonly scene = new THREE.Scene()
@@ -160,6 +184,15 @@ export class SceneManager {
    */
   private pendingLoads = new Set<Promise<void>>()
 
+  /**
+   * AW fork: scale awareness. The library spans a 3-inch compact to a 30-inch
+   * suitcase, and a 1 m grid with a 5 cm gizmo snap is unusable at the small
+   * end. `gridCell` is the current grid spacing in metres; `applyScaleContext`
+   * re-derives it, the gizmo snap and both near planes from the scene.
+   */
+  private grid!: THREE.GridHelper
+  private gridCell = 1
+
   /** Imported 3D scans (Gaussian splats). Editor staging only: hidden from
    *  every export pass — worker-based splat sorting cannot guarantee the
    *  byte-deterministic renders the export contract requires, and splats
@@ -216,10 +249,8 @@ export class SceneManager {
 
     // Ground: soft grid (editor chrome — lives in overlay so exports never
     // include it) + shadow-catching plane (stays: contact shadows read well)
-    const grid = new THREE.GridHelper(60, 60, 0x33343a, 0x27282d)
-    ;(grid.material as THREE.Material).transparent = true
-    ;(grid.material as THREE.Material).opacity = 0.6
-    this.overlay.add(grid)
+    this.grid = makeGrid(this.gridCell)
+    this.overlay.add(this.grid)
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
       new THREE.ShadowMaterial({ opacity: 0.3 })
@@ -417,6 +448,7 @@ export class SceneManager {
       }
     }
 
+    this.applyScaleContext()
     this.rebuildOverlay()
     this.applyEnvironment()
     this.syncScans()
@@ -612,6 +644,59 @@ export class SceneManager {
     while (this.pendingLoads.size > 0) {
       await Promise.allSettled([...this.pendingLoads])
     }
+  }
+
+  /**
+   * Smallest product dimension currently staged, in metres, or 1 m when the
+   * scene holds nothing small. Derived purely from the DOCUMENT — never from
+   * selection — because it feeds the shot camera's near plane, and exported
+   * pixels must not depend on what the editor happens to have highlighted.
+   */
+  private sceneScaleMetres(): number {
+    let smallest = 1
+    for (const e of this.docScene?.entities ?? []) {
+      if (!isProductAssetId(e.assetId)) continue
+      const spec = assetSpec(e.assetId)
+      const scale = e.transform.scale || 1
+      const extent = Math.min(spec.height, spec.footprint * 2) * scale
+      if (extent > 0) smallest = Math.min(smallest, extent)
+    }
+    return clamp(smallest, 0.005, 1)
+  }
+
+  /**
+   * Re-derive everything that assumes human scale: grid spacing, gizmo snap
+   * and both near planes. Called whenever the document changes, which is the
+   * only input, so two machines opening the same project agree.
+   */
+  private applyScaleContext(): void {
+    const ref = this.sceneScaleMetres()
+
+    // Near planes. A 1.7 cm lipstick shot from 8 cm clips against the stock
+    // 0.05 m shot-camera near, so it has to come down with the subject.
+    const shotNear = clamp(ref * 0.02, 0.001, 0.05)
+    if (this.shotCam.near !== shotNear) {
+      this.shotCam.near = shotNear
+      this.shotCam.updateProjectionMatrix()
+    }
+    const freeNear = clamp(ref * 0.02, 0.001, 0.1)
+    if (this.freeCam.near !== freeNear) {
+      this.freeCam.near = freeNear
+      this.freeCam.updateProjectionMatrix()
+    }
+
+    // Editor chrome: a readable cell at the subject's scale, and a snap fine
+    // enough to place a cube inside an open suitcase.
+    const cell = niceStep(ref / 2)
+    if (cell !== this.gridCell) {
+      this.gridCell = cell
+      this.overlay.remove(this.grid)
+      this.grid.geometry.dispose()
+      ;(this.grid.material as THREE.Material).dispose()
+      this.grid = makeGrid(cell)
+      this.overlay.add(this.grid)
+    }
+    this.transform.setTranslationSnap(clamp(cell / 10, 0.0005, 0.05))
   }
 
   private async loadCustomModel(visual: EntityVisual, rel: string): Promise<void> {

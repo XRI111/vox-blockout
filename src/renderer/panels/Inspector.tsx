@@ -15,6 +15,7 @@ import { RIGS } from '@engine/rigs'
 import { MOTION_PRESETS, type MotionPreset } from '@engine/motions'
 import { CAMERA_MOVE_PRESETS } from '@engine/camera-moves'
 import { ACTION_PRESETS } from '@engine/action-presets'
+import { getProduct, isProductAssetId, presetIdFromAssetId } from '@engine/products'
 import { ShotEvaluator } from '@engine/evaluate'
 import { newId } from '@engine/ids'
 import { getSceneManager } from '../export/scene-access'
@@ -593,6 +594,18 @@ function EntityInspector({
   const heightParam = typeof entity.params?.height === 'number' ? entity.params.height : 1
   const buildParam = typeof entity.params?.build === 'number' ? entity.params.build : 1
 
+  // AW fork: a product preset declares its own states (closed, front panel
+  // open, top folded, expanded). Switching one is a document mutation, so it
+  // undoes and exports like any other edit.
+  const productPreset = isProductAssetId(entity.assetId)
+    ? getProduct(presetIdFromAssetId(entity.assetId))
+    : undefined
+  const productStates = productPreset?.states ?? []
+  const productState =
+    typeof entity.params?.state === 'string'
+      ? entity.params.state
+      : (productPreset?.defaultState ?? productStates[0]?.id ?? '')
+
   // Marks for this entity in the current take.
   const take = scene.blocking.find((b) => b.id === shot.blockingTakeId)
   const track = take?.tracks.find((t) => t.entityId === entityId)
@@ -660,6 +673,26 @@ function EntityInspector({
             }}
           />
         </div>
+        {productStates.length > 1 && (
+          <div className="field">
+            <label>State</label>
+            <select
+              value={productState}
+              onChange={(e) =>
+                editEntity('product state', (en) => {
+                  en.params = { ...en.params, state: e.target.value }
+                })
+              }
+              title="Open a panel, fold the top down, or expand the shell"
+            >
+              {productStates.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="field">
           <label>Scale ({entity.transform.scale.toFixed(2)})</label>
           <input
