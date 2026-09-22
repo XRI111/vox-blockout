@@ -1,6 +1,6 @@
 # AW Previs Fork: Build Handoff
 **Location in repo:** `docs/aw/HANDOFF.md` | **Created:** 2026-09-21 | **Owner:** Stephane Gringer (Fractional CMO, AlchemyWorx)
-**Status line (keep current):** Forked by Stephane. Not yet built, baselined, or audited.
+**Status line (keep current):** Baselined and audited 2026-09-22. All gates green (typecheck, lint, 886 unit tests, 6/6 smoke incl. real export and byte-determinism). MCP registered and driving the app. Phase 1 not started, waiting on Stephane's go-ahead.
 
 This is a living document. Claude Code: read it at the start of every session, and update the Status Log at the bottom the moment anything runs, ships, or breaks, with an honest status ("built, untested", "smoke passing", "blocked on X"). One source of truth: edit sections in place, don't append duplicates.
 
@@ -44,7 +44,236 @@ Key upstream facts this plan depends on:
    - Which existing environment kits and props cover: airport terminal, security line/bins, jet bridge, aircraft cabin with overhead bins, hotel room, car trunk, curbside, seamless studio?
 5. Write the audit as a short section in this file (replace "Audit results: pending" below), propose any Phase 1 scope changes, and stop for Stephane's go-ahead.
 
-**Audit results:** pending.
+## Audit results
+
+Run 2026-09-22 on the `aw/baseline` branch against commit `e7b12f1`. Every claim below cites the file
+and line range it was read from. Anything not verified in `src/` is marked unverified.
+
+### Baseline: what runs
+
+| Gate | Result |
+|---|---|
+| `npm install` | Clean, exit 0. Node 22.22.2, npm 10.9.7, Linux x86_64 container, no GPU, no display. |
+| `npm run typecheck` | Green (both TS projects). |
+| `npm run lint` | Green, zero warnings. |
+| `npm test` | Green. 886 tests across 14 files, 1.9s. |
+| `npm run dev` | Boots to the welcome screen under Xvfb. The 3D viewport does not initialise (see below). |
+| `npm run smoke` | **Green, 6/6, after a container workaround.** Fails out of the box here. |
+
+Two environment problems, both container-side, neither a code defect:
+
+1. **No ffmpeg.** Not on `PATH` and not vendored for Linux. Installed ffmpeg/ffprobe 6.1.1 from apt.
+   The resolution order in `src/main/ffmpeg.ts` falls through to `ffmpeg` on `PATH` on Linux, so that
+   is enough. On Stephane's Mac, `brew install ffmpeg` per `AGENTS.md`.
+2. **No WebGL.** Chromium picks Mesa llvmpipe through ANGLE and fails with
+   `BindToCurrentSequence failed`, so `new THREE.WebGLRenderer()` throws in `SceneManager`'s
+   constructor and the app never leaves the welcome screen. There is no `/dev/dri` in the container.
+   Forcing ANGLE/SwiftShader on the Electron main process fixes it and the whole smoke suite passes,
+   including the real ffmpeg export and the byte-determinism check:
+
+   ```
+   ✓ app boots to the welcome screen
+   ✓ creates a project and stages a scene through real UI actions
+   ✓ choreographs marks, labels, and camera; project round-trips to disk
+   ✓ playback advances deterministic state
+   ✓ rendering is deterministic: same t → byte-identical frames
+   ✓ exports a real package: video + stills + prompt + metadata
+   6 passed (1.3m)
+   ```
+
+   I proved this by patching the **built artifact** (`out/main/index.js`), not the source, and reverted
+   it. `ELECTRON_EXTRA_LAUNCH_ARGS` is ignored by this Electron build, and the smoke spec hardcodes its
+   launch args, so there is no env-only way in. **Recommendation:** add an env-gated
+   `app.commandLine.appendSwitch('use-angle', 'swiftshader')` to `src/main/index.ts` behind something
+   like `BLOCKOUT_SOFTWARE_GL=1`. Roughly five lines, upstream-mergeable, logged in `MODIFICATIONS.md`.
+   Without it, no cloud or CI agent session can ever run `npm run smoke`, which is the repo's own
+   definition of done for engine and export changes. Not done yet, waiting on your go-ahead.
+
+### MCP: registered and driving the app
+
+`claude mcp add blockout -- node /home/user/vox-blockout/mcp/blockout-mcp.mjs` succeeded and reports
+`blockout: ... - ✓ Connected`. I then launched the built app and drove it through the bridge over real
+stdio JSON-RPC:
+
+- `initialize` returned `{"name":"blockout","version":"1.0.0"}`.
+- `tools/list` returned **34** tools. `AGENTS.md` and `mcp/README.md` both say 33. Minor doc drift, not
+  a defect.
+- `get_state` returned the live project, scene, shot and conventions string.
+- `add_entity {assetId: "prop.suitcase", x: 0, z: -2, label: "RUNWAY"}` placed the entity, and a second
+  `get_state` showed it in the scene with its label. Round trip confirmed.
+
+Success condition 2 in the TL;DR (an AW team member drives the app by telling Claude Code what they
+want) is technically live today.
+
+### Gap audit
+
+**1. Can an arbitrary `.glb`/`.gltf` be imported at true scale and render into exports?**
+
+It imports and it renders. It does not do true scale, and it does not do clay.
+
+- *Import path works.* `Library.tsx:702-727` picks the file, `src/main/index.ts:156-164`
+  (`project:importAsset`) copies it into `<project>/assets/` and returns a project-relative path, which
+  is stored on `Entity.sourceFile` (`src/engine/types.ts:84`). Projects stay portable, so handoff item
+  1's storage requirement is already met.
+- *It does reach the exports.* `SceneManager.addEntityVisual` (`SceneManager.ts:544-556`) calls
+  `loadCustomModel`, which parses with `GLTFLoader` and adds the result into the entity's root group
+  (`SceneManager.ts:558-580`). That group lives in `this.scene`, and `renderFrameAt`
+  (`SceneManager.ts:2371-2464`) renders `this.scene` for every pass. Imported models are **not** in the
+  editor-only exclusion list that hides Gaussian scans (`SceneManager.ts:2383-2385`). The handoff
+  expected "no" here. The answer is yes.
+- *True scale: no.* Scale is one uniform multiplier on `Entity.transform.scale`
+  (`types.ts:78`), exposed only as a slider clamped to 0.3 to 3.0 with no numeric field
+  (`Inspector.tsx:663-676`). No unit declaration, no inches or cm entry, no bounding-box measurement
+  after load. A GLB authored in centimetres lands 100x oversize and the slider cannot correct it.
+- *Ground snap: yes.* `snapSelectionToGround` (`SceneManager.ts:1328-1360`) raycasts from a real
+  `Box3` of the loaded object, so it snaps actual geometry.
+- *But the metadata is wrong.* An unrecognised asset id degrades to a person-scale box, height 1.7 m,
+  footprint 0.5 (`assets.ts:270-283`). That fallback is what auto-framing and label placement consume
+  (`assets.ts:286-290`), so every shot-size preset misframes an imported product.
+- *Clay override: does not exist.* The glTF keeps its own materials in the clean pass. Depth and
+  normal passes override materials scene-wide (`SceneManager.ts:2417-2427`) so they are unaffected.
+- *`.obj` is a broken promise.* The picker advertises `obj` (`Library.tsx:703`) but the only loader is
+  `GLTFLoader` (`SceneManager.ts:565`). An `.obj` copies successfully, then fails to parse and toasts
+  an error.
+- *Race condition.* `loadCustomModel` is fire-and-forget (`SceneManager.ts:555`). Exporting right after
+  opening a project can render frames before the model resolves. No test covers custom-model export.
+
+**2. Still-frame export: arbitrary resolution? Per-mark only, or current frame?**
+
+Per-mark and current-frame both exist. Arbitrary resolution does not.
+
+- *Per-mark:* `exporter.ts:306-326` renders first frame, last frame, and one still per camera mark,
+  plus a top-down diagram hardcoded at 1600x1600 (`exporter.ts:329`).
+- *Current frame:* `exportStillAtPlayhead` (`exporter.ts:386-418`) writes one PNG at the playhead into
+  `exports/<scene>/Shot-<name>/frames/`, wired to the "Export this frame (at playhead)" button
+  (`DeliverPanel.tsx:186-207`).
+- *Resolution is a three-way enum.* `ExportResolution = 'auto' | '720p' | '1080p'` (`exporter.ts:20`).
+  `exportDims` (`exporter.ts:42-64`) derives width and height from the profile's `exportWidth` and the
+  shot's aspect, evening both for h264. There is no arbitrary path. You cannot ask for 1200x600 today,
+  and the ceiling anywhere is a 1920 long edge (video profiles) or 1536 (image profiles).
+
+**3. Aspect masks: custom ratios?**
+
+No. `AspectId` is a closed five-value union (`types.ts:67`), `ASPECT_RATIOS` is a
+`Record<AspectId, number>` (`camera.ts:26-32`), and both UI lists enumerate the same five
+(`Inspector.tsx:55`, `Viewport.tsx:17`). The MCP `set_shot` validates against a hardcoded copy of the
+same list (`control/handler.ts:291`). Of the six ratios the build plan proposes, only **1:1 and 9:16
+exist**. 2:1, 3:2 and 4:5 do not. Adding them touches the union, the ratio table, two UI lists, the
+control handler, every profile's `aspects` array, and the migration in `schema.ts`.
+
+Separately, the aspect *mask* is a viewport-only CSS overlay with a thirds grid and a 5% action-safe
+box (`Viewport.tsx:540-588`). Nothing about it is exported.
+
+**4. Generator profiles: image-only models, or video only?**
+
+Image models are already first-class. `GeneratorProfile.kind` is `'video' | 'image'`
+(`profiles.ts:17`), and four image profiles ship: GPT Image 2, Nano Banana, Ideogram, Krea 2
+(`profiles.ts:129-169`), each with `refModes: ['stills']` and `exportWidth: 1536`. Adding one is a
+config edit exactly as `docs/generator-profiles.md` claims.
+
+Two caveats:
+
+- The Deliver panel does not branch on `kind`. It lists all nine profiles in one dropdown
+  (`DeliverPanel.tsx:83-87`), and the package export still runs the full MP4 pass loop
+  (`exporter.ts:264-305`) even for an image profile, where the video is dead weight. The
+  "Export this frame" button is the practical stills path, and it ignores the pass toggles entirely.
+- `profiles.ts:5` claims users can drop profile JSON into a project `profiles/` folder. **Nothing in
+  `src/` reads such a folder.** `getProfile(id, extra)` takes an `extra` array (`profiles.ts:162`) but
+  every caller passes none. Treat that comment as aspirational.
+
+**5. Environment and prop coverage for the pilot shot list**
+
+205 catalog entries: 55 environment kits, 86 props (`src/engine/assets.ts`).
+
+| Need | Status | Evidence |
+|---|---|---|
+| Airport terminal | **Have** | `env.airportTerminal` (`assets.ts:239`). Glass window wall with mullions, two back-to-back gate seating rows, four check-in desks, emissive departures board (`builders.ts:4958-4997`). |
+| Security line / bins | **Missing** | No checkpoint, no X-ray, no bins anywhere. Nearest stand-ins: `prop.barrier`, `prop.crate`, `prop.trafficCone`, `furniture.counter`. |
+| Jet bridge | **Missing** | Nothing in the catalog. |
+| Aircraft cabin, overhead bins | **Have, but closed** | `env.planeCabin` (`assets.ts:208`) builds six rows of 2+2 seats, angled side walls, and overhead bins as solid boxes 0.6 m wide x 0.4 m tall at y=2.0 (`builders.ts:3802-3833`). They do not open. A 22x14x8 inch carry-on is 0.56 x 0.36 x 0.20 m, so shot 4 (sliding wheels-first into a bin) needs an open-bin variant, not the existing kit. |
+| Hotel room | **Have, no luggage rack** | `env.hotelRoom` (`assets.ts:233`): bed, headboard, dresser, TV, desk, chair, curtain, bathroom partition (`builders.ts:4703-4743`). No rack. |
+| Car trunk | **Missing** | Vehicles are closed shells. No `trunk`, `boot` or `tailgate` in `builders.ts` (the two hits are a tree trunk at 3869 and a chest at 2094). New geometry. |
+| Curbside drop-off | **Partial** | `env.downtown`, `env.residentialStreet`, `env.gasStation`, `env.parkingLot` (`assets.ts:244-251`), plus `prop.busShelter`, `prop.parkingMeter`, `prop.trafficCone` (`assets.ts:193`). No purpose-built curb-with-open-door set, but closest to usable as-is. |
+| Seamless studio / infinity cove | **Missing** | Nothing. `env.stage` is a theatrical stage with a raised platform, flat backdrop and two light trusses (`builders.ts:4347-4380`), not a cyc wall. Shots 1 and 6 both need this. |
+
+Two adjacent finds worth keeping:
+
+- **`prop.suitcase` is already a rolling bag.** 0.45 x 0.70 x 0.24 m body, torus pull handle at y=0.70,
+  two wheels (`builders.ts:1785-1810`). Wrong proportions for the Runway (0.36 W x 0.56 H x 0.20 D) and
+  it is hardcoded rather than parametric, but it is the right builder to clone for the luggage proxy.
+- **Lighting is all location lighting.** Nine presets confirmed (`types.ts:37-48`, table at
+  `SceneManager.ts:767-782`): day, golden hour, night, interior warm, interior cool, club, and three
+  physical-sky presets. Zero product lighting. No soft top light, no window light, no seamless
+  key/fill. Build-plan item 8 is genuinely new work, not an extension.
+
+**6. Export package vs the Phase 1 spec** (not on the ask list, but it is the deliverable)
+
+The plan asks for `clay.png`, `depth.png`, `normal.png`, `lineart.png`, `product_mask.png`,
+`headline_safezone_mask.png`, `prompt.txt`, `metadata.json`. Today:
+
+- `RenderPass` is `'clean' | 'depth' | 'normal'` (`SceneManager.ts:58`). **No lineart pass, no mask
+  pass.** Both are new render paths.
+- Depth and normal ship as MP4s only (`exporter.ts:264-305`). Per-mark stills are clean-pass only
+  (`exporter.ts:321`). Getting depth and normal PNGs per mark is a loop change, not new rendering.
+- `prompt.txt` exists (`exporter.ts:337`, `src/engine/prompt.ts`).
+- `metadata.json` exists (`exporter.ts:154-207`) with shot name, duration, fps, aspect, sensor, rig,
+  rig intensity, seed, every camera mark (position, pan and tilt in degrees, focal length, focus
+  distance) and every subject's marks. **Two gaps for this pilot:** it only lists entities that have a
+  blocking track (`exporter.ts:182-198`), so a static product with no marks does not appear at all; and
+  it records neither the export resolution nor any safe-zone rect.
+
+### Proposed Phase 1 scope
+
+Three changes to the plan, and one addition. Taking them in order of how much they move the pilot.
+
+**Add a fidelity spike before anything else, and gate the rest on it.** The plan assumes a grey-box
+proxy plus clay/depth references is enough to make an image model produce a Biaggi-accurate Runway.
+Nothing in the repo or the plan tests that assumption, and every one of the ten Phase 1 items is
+downstream of it. Before building a parametric luggage generator, stage a rough Runway from existing
+primitives, export clean and depth stills with the tooling that exists today, run them through AW's
+image model with Biaggi product photos attached, and judge the result against a real email headline.
+If the bag comes back generic, the fix is upstream of this tool entirely (image-to-3D from the product
+image set, which is already second in your own 3D source order) and items 1, 2 and 3 change shape.
+Half a day to find out.
+
+**Cut item 10 (Shopify URL import) from Phase 1.** It is real leverage for client five, not for the
+pilot. Biaggi's specs are on one page and take 30 seconds to type once. Building a fetch-and-parse path
+with a manual fallback costs more than it saves at n=1, and it adds a network dependency to a tool
+whose entire value is deterministic offline export. Revisit after the pilot proves out.
+
+**Trim the pilot shot list to five.** Shots 3 (laptop into a security bin) and 4 (bag into an overhead
+bin) are the only two that need geometry that does not exist in any form: a security checkpoint, and an
+openable overhead bin. They are the most expensive shots on the list and they are feature-demo shots,
+not hero shots. Land 1, 2, 5, 6 and 7 first. Re-add 3 and 4 once the hero frames prove the pipeline.
+
+**Reframe item 1.** "Product import that renders in exports" is mostly done, as the audit above shows.
+What is left is finishing it: numeric unit-aware scale entry, a clay override toggle, an `await` on the
+model load before export, and a decision on `.obj` (wire a loader or drop it from the picker). That is
+a fraction of what the plan implies.
+
+Build order and rough effort. Days are agent-session days on Opus at `high`, `xhigh` for the engine
+and export items, per your own routing note.
+
+| # | Item | Why here | Effort |
+|---|---|---|---|
+| 0 | Fidelity spike | Gates everything. Cheapest possible answer to the only question that can kill the approach. | 0.5d |
+| 1 | Aspect ratios + arbitrary stills resolution | Unblocks every shot's framing. Nothing downstream is worth building at the wrong aspect. Cheap, touches a closed union and one dims function. | 1d |
+| 2 | Headline safe zone: overlay, exported mask, negative-space percent, prompt clause | The single feature that makes this an AW email tool rather than a previs tool. Store the rect on the shot so `state(t)` stays pure and `metadata.json` can carry it. | 1.5d |
+| 3 | Stills export package: per-mark and per-playhead multi-pass PNGs, product mask, lineart pass, metadata additions | The deliverable itself. Depends on 1 and 2. `xhigh`, touches `SceneManager.renderFrameAt` and byte-determinism. | 2d |
+| 4 | Parametric Runway proxy: H x W x D, hybrid body, four states, handle/wheels/pocket options | The pilot product. Biggest single item. Clone `prop.suitcase`'s builder. | 2.5d |
+| 5 | Zipcube proxies | Trivial once 4 exists. Soft boxes at spec dimensions. | 0.5d |
+| 6 | Finish GLB import: unit-aware numeric scale, clay override, load-await, `.obj` decision | Only needed if the spike says we need real geometry rather than a proxy. Sequence after 4 so the proxy path is not blocked on it. | 1d |
+| 7 | Product sets and lighting: seamless sweep, tabletop, soft top light, window light, hard sun | Shots 1, 2 and 6 all need a cyc. Genuinely new, not an extension of the nine presets. | 1.5d |
+| 8 | Image generator profiles for AW's actual models, plus skipping the video pass loop when `kind === 'image'` | Blocked on open question 2. Config edit once answered. | 0.5d |
+| 9 | Travel kits, missing only: security checkpoint, open-bin cabin variant, hotel luggage rack, open car trunk, curbside staging | Last because 5 of 7 shots do not need them. Cut the jet bridge, no shot uses it. | 2.5d |
+| n/a | Shopify URL import | Deferred out of Phase 1. | n/a |
+
+Roughly **13.5 days** plus the spike, assuming the spike comes back positive. If it comes back negative,
+items 4, 5 and 6 get rewritten around an image-to-3D path and the estimate is not worth quoting yet.
+
+**One blocking question, everything else can proceed without an answer:** which image model does AW
+actually use in production? Open question 2 in the list below. The spike needs it, item 8 is entirely
+it, and the prompt templates in item 3 are written against it.
 
 ## Build plan
 
@@ -139,3 +368,7 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 | Date | Status | Notes |
 |---|---|---|
 | 2026-09-21 | Forked | Fork created by Stephane. Handoff added. Nothing built or baselined. |
+| 2026-09-22 | Baselined, green | Branch `aw/baseline`. `npm install` clean. typecheck green, lint green (0 warnings), `npm test` 886/886 across 14 files. Node 22.22.2, npm 10.9.7, Linux x86_64 cloud container, no GPU. |
+| 2026-09-22 | Smoke passing, with a caveat | `npm run smoke` 6/6 including the real ffmpeg export and the byte-determinism check. Needed two container fixes: installed ffmpeg 6.1.1 (none on PATH), and forced ANGLE/SwiftShader because the container has no WebGL (`BindToCurrentSequence failed`, no `/dev/dri`). The GL switch was applied to the built artifact and reverted, not to source. See the recommendation in Audit results. |
+| 2026-09-22 | MCP live | `claude mcp add blockout` connected. Drove the running app over the bridge: `initialize`, `tools/list` (34 tools, docs say 33), `get_state`, `add_entity` placing a labelled suitcase, `get_state` confirming it. |
+| 2026-09-22 | Audit done, blocked on go-ahead | Gap audit written into this file with file:line citations. Phase 1 scope proposed with build order and effort: spike first, Shopify import deferred, shot list trimmed to five. Not starting Phase 1. Blocking question: which image model does AW use? |
