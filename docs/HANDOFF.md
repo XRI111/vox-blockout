@@ -86,8 +86,11 @@ Two environment problems, both container-side, neither a code defect:
    launch args, so there is no env-only way in. **Recommendation:** add an env-gated
    `app.commandLine.appendSwitch('use-angle', 'swiftshader')` to `src/main/index.ts` behind something
    like `BLOCKOUT_SOFTWARE_GL=1`. Roughly five lines, upstream-mergeable, logged in `MODIFICATIONS.md`.
-   Without it, no cloud or CI agent session can ever run `npm run smoke`, which is the repo's own
-   definition of done for engine and export changes. Not done yet, waiting on your go-ahead.
+   Upstream CI is not affected either way: `.github/workflows/ci.yml:27-66` runs the Playwright specs
+   on `macos-14` and `windows-2022` native runners, where GL works. The switch is for headless Linux
+   containers, which is where every cloud Claude Code session runs. Without it, no such session can run
+   `npm run smoke`, which is the repo's own definition of done for engine and export changes. Not done
+   yet, waiting on your go-ahead.
 
 ### MCP: registered and driving the app
 
