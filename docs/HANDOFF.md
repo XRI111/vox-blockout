@@ -1,11 +1,11 @@
 # AW Previs Fork: Build Handoff
 **Location in repo:** `docs/aw/HANDOFF.md` | **Created:** 2026-09-21 | **Owner:** Stephane Gringer (Fractional CMO, AlchemyWorx)
-**Status line (keep current):** Baselined and audited 2026-09-22. All gates green (typecheck, lint, 886 unit tests, 6/6 smoke incl. real export and byte-determinism). MCP registered and driving the app. Phase 1 not started, waiting on Stephane's go-ahead.
+**Status line (keep current):** Baselined and audited 2026-09-22, all gates green. Scope changed the same day: dimensional accuracy over product fidelity, generic archetypes over product-specific code. Phase 1 rewritten to 7 items, building items 1 to 3 now, stopping after 3 for Stephane's review of the clay stills.
 
 This is a living document. Claude Code: read it at the start of every session, and update the Status Log at the bottom the moment anything runs, ships, or breaks, with an honest status ("built, untested", "smoke passing", "blocked on X"). One source of truth: edit sections in place, don't append duplicates.
 
 ## TL;DR
-This repo is Stephane's fork of `wassermanproductions/blockout` (Apache-2.0, Electron + TypeScript). We are turning it into an internal AlchemyWorx (AW) tool so designers and motion people can stage a real-scale product in a grey-box scene, frame it with real lens math and headline-safe negative space, and export clay/depth/normal/mask passes plus a model-tailored prompt for image and video generators. No Blender. First pilot: Biaggi (AW client) Runway Hardside Hybrid Carry On, product and lifestyle stills framed for email headlines.
+This repo is Stephane's fork of `wassermanproductions/blockout` (Apache-2.0, Electron + TypeScript). We are turning it into an internal AlchemyWorx (AW) tool so designers and motion people can stage a real-scale product in a grey-box scene, frame it with real lens math and headline-safe negative space, and export clay/depth/normal passes plus a model-tailored prompt for image and video generators. No Blender. First pilot: Biaggi (AW client) Runway Hardside Hybrid Carry On, product and lifestyle stills framed for email headlines.
 
 ## Goal and success condition
 AW's email work for Biaggi has been using a mix of products because good product shots don't exist. Current promotions center on Zipcubes (packing cubes). This tool fills that gap: new angles and lifestyle frames we can't get from existing photography, composed for headline copy.
@@ -225,79 +225,102 @@ The plan asks for `clay.png`, `depth.png`, `normal.png`, `lineart.png`, `product
   blocking track (`exporter.ts:182-198`), so a static product with no marks does not appear at all; and
   it records neither the export resolution nor any safe-zone rect.
 
-### Proposed Phase 1 scope
+### Proposed Phase 1 scope (superseded)
 
-Three changes to the plan, and one addition. Taking them in order of how much they move the pilot.
+The scope I proposed here on 2026-09-22 was overridden by Stephane the same day. The gap audit above
+still stands as evidence; the plan built on it does not. Two of its premises are gone:
 
-**Add a fidelity spike before anything else, and gate the rest on it.** The plan assumes a grey-box
-proxy plus clay/depth references is enough to make an image model produce a Biaggi-accurate Runway.
-Nothing in the repo or the plan tests that assumption, and every one of the ten Phase 1 items is
-downstream of it. Before building a parametric luggage generator, stage a rough Runway from existing
-primitives, export clean and depth stills with the tooling that exists today, run them through AW's
-image model with Biaggi product photos attached, and judge the result against a real email headline.
-If the bag comes back generic, the fix is upstream of this tool entirely (image-to-3D from the product
-image set, which is already second in your own 3D source order) and items 1, 2 and 3 change shape.
-Half a day to find out.
+- I wanted a fidelity spike to test whether a grey-box proxy could produce a Biaggi-accurate bag.
+  **Product fidelity is not a goal.** Models get appearance from reference images, not geometry, so
+  the question the spike would have answered does not need answering. Spike cut, image-to-3D cut.
+- I scoped a parametric *luggage* proxy. **The system must be generic**, carrying luggage, cosmetics
+  and odd-shaped appliances across AW clients with no product-specific code.
 
-**Cut item 10 (Shopify URL import) from Phase 1.** It is real leverage for client five, not for the
-pilot. Biaggi's specs are on one page and take 30 seconds to type once. Building a fetch-and-parse path
-with a manual fallback costs more than it saves at n=1, and it adds a network dependency to a tool
-whose entire value is deterministic offline export. Revisit after the pilot proves out.
-
-**Trim the pilot shot list to five.** Shots 3 (laptop into a security bin) and 4 (bag into an overhead
-bin) are the only two that need geometry that does not exist in any form: a security checkpoint, and an
-openable overhead bin. They are the most expensive shots on the list and they are feature-demo shots,
-not hero shots. Land 1, 2, 5, 6 and 7 first. Re-add 3 and 4 once the hero frames prove the pipeline.
-
-**Reframe item 1.** "Product import that renders in exports" is mostly done, as the audit above shows.
-What is left is finishing it: numeric unit-aware scale entry, a clay override toggle, an `await` on the
-model load before export, and a decision on `.obj` (wire a loader or drop it from the picker). That is
-a fraction of what the plan implies.
-
-Build order and rough effort. Days are agent-session days on Opus at `high`, `xhigh` for the engine
-and export items, per your own routing note.
-
-| # | Item | Why here | Effort |
-|---|---|---|---|
-| 0 | Fidelity spike | Gates everything. Cheapest possible answer to the only question that can kill the approach. | 0.5d |
-| 1 | Aspect ratios + arbitrary stills resolution | Unblocks every shot's framing. Nothing downstream is worth building at the wrong aspect. Cheap, touches a closed union and one dims function. | 1d |
-| 2 | Headline safe zone: overlay, exported mask, negative-space percent, prompt clause | The single feature that makes this an AW email tool rather than a previs tool. Store the rect on the shot so `state(t)` stays pure and `metadata.json` can carry it. | 1.5d |
-| 3 | Stills export package: per-mark and per-playhead multi-pass PNGs, product mask, lineart pass, metadata additions | The deliverable itself. Depends on 1 and 2. `xhigh`, touches `SceneManager.renderFrameAt` and byte-determinism. | 2d |
-| 4 | Parametric Runway proxy: H x W x D, hybrid body, four states, handle/wheels/pocket options | The pilot product. Biggest single item. Clone `prop.suitcase`'s builder. | 2.5d |
-| 5 | Zipcube proxies | Trivial once 4 exists. Soft boxes at spec dimensions. | 0.5d |
-| 6 | Finish GLB import: unit-aware numeric scale, clay override, load-await, `.obj` decision | Only needed if the spike says we need real geometry rather than a proxy. Sequence after 4 so the proxy path is not blocked on it. | 1d |
-| 7 | Product sets and lighting: seamless sweep, tabletop, soft top light, window light, hard sun | Shots 1, 2 and 6 all need a cyc. Genuinely new, not an extension of the nine presets. | 1.5d |
-| 8 | Image generator profiles for AW's actual models, plus skipping the video pass loop when `kind === 'image'` | Blocked on open question 2. Config edit once answered. | 0.5d |
-| 9 | Travel kits, missing only: security checkpoint, open-bin cabin variant, hotel luggage rack, open car trunk, curbside staging | Last because 5 of 7 shots do not need them. Cut the jet bridge, no shot uses it. | 2.5d |
-| n/a | Shopify URL import | Deferred out of Phase 1. | n/a |
-
-Roughly **13.5 days** plus the spike, assuming the spike comes back positive. If it comes back negative,
-items 4, 5 and 6 get rewritten around an image-to-3D path and the estimate is not worth quoting yet.
-
-**One blocking question, everything else can proceed without an answer:** which image model does AW
-actually use in production? Open question 2 in the list below. The spike needs it, item 8 is entirely
-it, and the prompt templates in item 3 are written against it.
+Live scope is the Build plan below.
 
 ## Build plan
 
 ### Phase 1: Product stills mode (required for the pilot)
-Every new timeline/scene behavior goes through the engine pattern. Add Vitest coverage. Keep `npm run smoke` green and exports byte-deterministic.
 
-1. **Product import that renders in exports.** GLB/glTF import with unit-aware scaling (inches or cm entry), ground snap, clay override by default with a toggle to show original materials for silhouette checks. Store imported assets inside the project folder so projects stay portable.
-2. **Parametric luggage proxy.** Generator from H x W x D with body types:
-   - Hardside shell (rounded box).
-   - **Hybrid (Runway):** hard polycarbonate rear shell + soft fabric front panel. States: closed; front panel fully open; top of front panel folded down (laptop sleeve access); expanded depth.
-   - Softside (ZipSak) as a later addition.
-   Options: telescoping trolley handle with height stops, top carry handle, 4 spinner wheels, rear exterior pocket.
-3. **Packing cube proxies (Zipcubes).** Simple soft boxes at spec dimensions, placeable inside the open Runway. Zipcubes are the current promo focus, so "Runway open with cubes fitted inside" is a priority shot.
-4. **Stills export package** per camera mark or current frame, arbitrary resolution:
-   `clay.png`, `depth.png`, `normal.png`, `lineart.png`, `product_mask.png`, `headline_safezone_mask.png`, `prompt.txt` (per target model), `metadata.json` (lens, sensor, camera pose, product placement, safe-zone rect).
-5. **Headline safe-zone overlay.** Viewport overlay + exported mask. Presets: left third, right third, top band, bottom band, custom rect. Show negative-space percentage. Prompt generator writes it into the prompt (e.g. "clean, uncluttered background across the left 40% of frame for headline copy").
-6. **Aspect presets** (ASSUMPTION, confirm AW's email spec with Stephane): 2:1 (1200x600), 3:2 (1200x800), 1:1 (1080x1080), 4:5 (1080x1350), 9:16 (1080x1920). Extend the existing aspect-mask system.
-7. **Image-model generator profiles.** Add profiles for whatever models AW uses (open question). Each defines input slots (structure/depth reference, product reference images, style reference), max resolution, prompt template.
-8. **Product photography sets and lighting.** Seamless sweep/infinity cove, tabletop, soft top light, window light, hard sun. Extend the existing 9 presets; don't duplicate.
-9. **Travel lifestyle kits**, only those missing after the audit: airport terminal, security checkpoint with bins, aircraft cabin with overhead bins, hotel room with luggage rack, car trunk, curbside drop-off.
-10. **Import product from a Shopify URL** (nice-to-have, high leverage; biaggi.com is Shopify and most AW e-commerce clients likely are too). Fetch the product JSON (`/products/<handle>.json` or `.js`; verify on biaggi.com), parse the Specifications block for dimensions, download the image set into a project reference folder, generate a scaled proxy. On parse failure, fall back to manual entry. Never guess dimensions.
+**Governing constraint, owner decision 2026-09-22: dimensional accuracy, not product fidelity.**
+Geometry exists to control real-world scale, silhouette, placement and composition. Product appearance
+comes from reference images handed to the image model, never from the mesh. Nothing in Phase 1 chases
+likeness, and "it doesn't look like the real product" is not a defect.
+
+**Second constraint: no product-specific code paths.** The system has to carry luggage (Biaggi),
+cosmetics (Laura Geller, Julep, near term) and appliances with odd proprietary shapes (Baby Brezza)
+without a new builder per client. Products are data, not code.
+
+Every new scene or timeline behavior goes through the engine pattern. Add Vitest coverage. Keep
+`npm run smoke` green and exports byte-deterministic. One branch and one PR per item, built in this
+order.
+
+1. **Env-gated software-GL switch.** `app.commandLine.appendSwitch('use-angle', 'swiftshader')` in
+   `src/main/index.ts` behind an env flag, default off so normal launches are untouched. Without it no
+   headless Linux container can create a WebGL context, so no cloud agent session can run
+   `npm run smoke`, which is the repo's own definition of done for engine and export work. Log the
+   change in `MODIFICATIONS.md`.
+
+2. **Await model loads before export and stills.** `loadCustomModel` is fire-and-forget today
+   (`SceneManager.ts:555`), so an export can render frames before an imported GLB resolves. Make the
+   export and stills paths wait, with a test that proves an imported GLB is present in frame 0. Also
+   resolve `.obj`: the picker advertises it (`Library.tsx:703`) but only `GLTFLoader` exists. Pick
+   whichever is smaller, wiring `OBJLoader` or dropping the extension, and say which in the PR.
+   GLB import is the escape hatch for shapes the archetypes cannot cover, so it has to be solid.
+
+3. **Generic parametric product system.** No product-specific code anywhere in it.
+   - **Archetypes:** rounded box, capped cylinder, tapered tube. Each supports an optional hinged door
+     or lid, and attachable parts: handle, wheels, feet, cap, pump.
+   - **Compound products:** a preset can combine several archetypes at relative offsets into one
+     selectable product, which is how odd shapes like a bottle warmer get covered.
+   - **Presets are data:** JSON in a presets folder, overridable per project. A preset names its
+     archetype or archetypes, dimensions in inches or cm, and part states.
+   - **Scale-aware from roughly 1 inch to 30 inches**, lipstick to check-in luggage. Grid, snapping,
+     camera near-clip and default framing all have to follow the product's size rather than assume
+     human scale.
+   - Clone `prop.suitcase`'s builder logic (`builders.ts:1785-1810`) where it helps.
+   - **First presets:** Biaggi Runway (22 x 14 x 8 in, expanding to 10.5; trolley handle with height
+     stops, four wheels, front panel as a hinged slab with closed / open / top-folded states),
+     Zipcubes as plain boxes at spec dimensions, one cosmetic compact, one lipstick-size tube, one
+     compound appliance example.
+
+4. **Cheap props and sets.** Security tray, open overhead-bin door, vanity or bathroom counter
+   tabletop, seamless tabletop sweep. Check the existing 55 environment kits and 86 props first and
+   extend rather than duplicate: `env.planeCabin` already has closed bins (`builders.ts:3827-3830`) and
+   `env.airportTerminal` already exists (`builders.ts:4958-4997`).
+
+5. **Arbitrary export resolution, plus 2:1, 3:2 and 4:5 added to the aspect set.** `ExportResolution`
+   is a three-way enum today (`exporter.ts:20`) and `AspectId` is a closed five-value union
+   (`types.ts:67`). Adding ratios touches the union, `ASPECT_RATIOS`, two UI lists, the MCP control
+   handler, every profile's `aspects` array, and the schema migration.
+
+6. **Headline safe-zone overlay.** Presets left third, right third, top band, bottom band, custom
+   rect. Viewport overlay, negative-space percentage, written into `prompt.txt` and `metadata.json`.
+   Store the rect on the shot so `state(t)` stays pure.
+
+7. **Small-product camera check, report only.** Verify macro-range focal lengths, close focus distance
+   and shallow depth of field in the clay and depth passes. Then test whether a character's hand
+   holding the lipstick-size tube reads clearly at close range. Report with renders. Do not fix in
+   this pass.
+
+**Cut** (owner decision, 2026-09-22): fidelity spike, image-to-3D, clay override on imported models,
+unit-aware GLB scaling, soft-body cube proxies. **Deferred:** lineart pass, product-mask pass, Shopify
+URL import.
+
+Effort re-estimate. Agent-session days on Opus, `xhigh` for engine and export work. Anything over one
+day carries its reason.
+
+| # | Item | Effort | Reason if over 1d |
+|---|---|---|---|
+| 1 | Software-GL switch | 0.25d | |
+| 2 | Await model loads, `.obj` decision | 0.5d | |
+| 3 | Generic parametric product system | 3d | Five subsystems, not one: archetype builders, the part-attachment model, compound composition, a JSON preset loader with project override, and scale-awareness. Scale-awareness alone reaches the viewport grid, the camera near-clip, snapping and the auto-framing path, all of which assume human scale today. Plus five presets and engine tests. |
+| 4 | Cheap props and sets | 1d | |
+| 5 | Arbitrary resolution + 3 aspect ratios | 1d | |
+| 6 | Headline safe-zone overlay | 1.5d | The rect lives on the shot, so it needs a schema field, a migration and a round-trip test, then five consumers: viewport overlay, negative-space computation, `engine/prompt.ts`, `metadata.json`, and the aspect-aware overlay layout. Each consumer needs its own test. |
+| 7 | Small-product camera check | 0.5d | Report only, no fix. |
+
+Roughly **7.75 days**, down from 13.5. The fidelity constraint is what bought that back.
 
 ### Phase 2: Phone camera input (handheld video moves; not needed for stills)
 - Spike first: an ARKit app streaming 6DoF pose over OSC/VMC/FreeD (VRL Cam lists these). Receive UDP in the Electron main process, map to the shot camera, record into camera marks. LOW CONFIDENCE on VRL Cam: single store-listing source, untested.
@@ -314,8 +337,8 @@ Source of truth: https://biaggi.com/products/runway-hardside-hybrid-carry-on (Sp
 - **Signature features (these are the shots):** opens from the front panel instead of a clamshell; top of the front panel folds down for two cushioned laptop sleeves and a passport pocket; large zippered rear water-bottle pocket; slim profile for small-plane overhead bins; expansion zipper; removable wet/dirty pouch.
 - **Colors:** Black, Navy Blue, Grey, Pink.
 - **Zipcubes tie-in:** Biaggi sells a Runway + Zipcubes bundle (3-pack carry-on size + Mini Cube Duo) and markets the cubes as fitting the Runway like a jigsaw. Pull Zipcube dimensions from their product pages before building proxies.
-- **Reference imagery:** the product page carries a studio image set, a product video, and creator lifestyle shots. Download into the project's reference folder for image-model product references and possible image-to-3D.
-- **3D source order:** official CAD/3D from Biaggi (ask Stephane) > image-to-3D from the product image set > phone scan of a physical sample > parametric hybrid proxy (item 2 above).
+- **Reference imagery:** the product page carries a studio image set, a product video, and creator lifestyle shots. Download into the project's reference folder. These are what carry product appearance into the generated image; the geometry only carries scale and silhouette.
+- **Geometry source:** the generic archetype preset (Phase 1 item 3) is the default and is expected to be sufficient. GLB import (item 2) is the escape hatch if Biaggi supplies real CAD. Image-to-3D and phone scanning are cut: fidelity is not a goal, so neither earns its cost.
 
 ## Pilot shot list (DRAFT, proposed by Claude, confirm with Stephane)
 | # | Shot | Type | Framing |
@@ -338,6 +361,10 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 | Stills first | AW's output is email/product imagery | Video-first |
 | Runway first, Zipcubes as supporting props | Runway is a best seller with visual features; Zipcubes are the current promo and physically pair with it | Glide (considered, parked) |
 | Phone mocap deferred, OSC spike first | Avoid Python sidecar and per-user subscription | VirtuCamera-first |
+| **Dimensional accuracy, not product fidelity** (Stephane, 2026-09-22) | Primitives at correct real-world dimensions are enough. Geometry controls scale, silhouette, placement and composition; the image model gets product appearance from reference images. Chasing likeness in the mesh buys nothing the references do not already give us | Fidelity spike, image-to-3D, photogrammetry of a physical sample, clay override on imported models |
+| **Generic archetypes, no product-specific code** (Stephane, 2026-09-22) | The tool has to carry luggage (Biaggi), cosmetics (Laura Geller, Julep) and odd-shaped appliances (Baby Brezza) without a new builder per client. Three archetypes plus attachable parts plus compound composition covers all three categories | A bespoke parametric luggage generator; per-client builder cases in `builders.ts` |
+| **Products are data presets, not code** (Stephane, 2026-09-22) | JSON in a presets folder, overridable per project. Adding a client's product is an edit a non-engineer can make, matching how generator profiles already work | Hardcoding each product into `assets.ts` and `builders.ts` |
+| **GLB import is the escape hatch, and must be solid** (Stephane, 2026-09-22) | Archetypes will not cover every shape. Import already renders into exports; it needs the load race fixed and the `.obj` promise resolved | Unit-aware scaling and clay override, both cut as fidelity work |
 
 ## Gotchas
 - **Attribution/naming:** Apache 2.0 Â§4(d). Keep `NOTICE`, credit Sam Wasserman (wassermanproductions.com) in docs and the app's about/credits. Upstream says stable/commercial distribution also needs upstream/trademark permission, signing/notarization, and FFmpeg/H.264 review. Internal AW use only; rename the app before anyone outside Stephane uses it.
@@ -375,3 +402,4 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 | 2026-09-22 | Smoke passing, with a caveat | `npm run smoke` 6/6 including the real ffmpeg export and the byte-determinism check. Needed two container fixes: installed ffmpeg 6.1.1 (none on PATH), and forced ANGLE/SwiftShader because the container has no WebGL (`BindToCurrentSequence failed`, no `/dev/dri`). The GL switch was applied to the built artifact and reverted, not to source. See the recommendation in Audit results. |
 | 2026-09-22 | MCP live | `claude mcp add blockout` connected. Drove the running app over the bridge: `initialize`, `tools/list` (34 tools, docs say 33), `get_state`, `add_entity` placing a labelled suitcase, `get_state` confirming it. |
 | 2026-09-22 | Audit done, blocked on go-ahead | Gap audit written into this file with file:line citations. Phase 1 scope proposed with build order and effort: spike first, Shopify import deferred, shot list trimmed to five. Not starting Phase 1. Blocking question: which image model does AW use? |
+| 2026-09-22 | Scope changed by owner, docs updated | Stephane: product fidelity is not a goal, primitives at correct real-world dimensions are enough, appearance comes from reference images. System must scale across AW clients (luggage, cosmetics, odd-shaped appliances). Cut: fidelity spike, image-to-3D, clay override, unit-aware GLB scaling, soft-body cubes. Deferred: lineart pass, product-mask pass, Shopify import. Key decisions and Build plan rewritten. Phase 1 is now 7 items, re-estimated at 7.75d from 13.5d. |
