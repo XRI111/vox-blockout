@@ -194,6 +194,13 @@ export const ASSET_CATALOG: AssetSpec[] = [
   A('prop.busShelter', 'Bus Shelter', 'props', 2.4, 2.0, 0, 'static', 'a bus shelter'),
   A('prop.slotMachine', 'Slot Machine', 'props', 1.7, 0.35, 0, 'static', 'a slot machine'),
   A('prop.cloud', 'Cloud', 'props', 2.5, 1.6, 0, 'flying', 'a cloud'),
+
+  // AW fork: staging props for product stills. Sizes are real-world, matching
+  // the dimensional-accuracy rule in docs/HANDOFF.md.
+  A('prop.securityTray', 'Security Tray', 'props', 0.1, 0.33, 0, 'static', 'an airport security tray'),
+  A('prop.overheadBin', 'Overhead Bin', 'props', 0.4, 0.61, 0, 'static', 'an aircraft overhead bin'),
+  A('prop.vanityCounter', 'Vanity Counter', 'props', 1.66, 0.6, 0, 'static', 'a bathroom vanity counter'),
+  A('prop.seamlessSweep', 'Seamless Sweep', 'props', 1.0, 0.6, 0, 'static', 'a seamless studio sweep backdrop'),
   A('prop.squirtGun', 'Squirt Gun (Toy)', 'props', 0.35, 0.2, 0, 'static', 'a toy squirt gun'),
 
   // Environment kits (one-click shells; placed like entities, big footprint)
