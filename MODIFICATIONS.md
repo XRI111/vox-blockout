@@ -15,6 +15,19 @@ Portable desktop work added in 2026, contributed by
 - Process-tree-aware export cancellation and cross-platform FFmpeg concat files.
 - Windows/macOS/Linux CI, packaging provenance, third-party notices, and SBOM generation.
 
+AlchemyWorx internal fork changes (2026), by **AlchemyWorx**:
+
+- Opt-in software rendering (`src/shared/software-gl.ts`, two lines in
+  `src/main/index.ts`). When `BLOCKOUT_SOFTWARE_GL` is set to a truthy value the
+  main process appends ANGLE/SwiftShader Chromium switches before `ready`, so
+  the app runs on hosts with no GPU (headless Linux containers, GPU-less CI
+  images) where Chromium otherwise fails WebGL context creation with
+  "BindToCurrentSequence failed". Default off: an unset variable leaves launch
+  behaviour byte-for-byte unchanged. Software and hardware backends are not
+  guaranteed pixel-identical to each other, so golden frames must not be
+  compared across the two.
+- AW build documentation under `docs/HANDOFF.md`.
+
 Downstream distributors should append their own branding and behavioral changes
 to this file rather than replacing the original attribution.
 
