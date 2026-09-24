@@ -16,8 +16,42 @@ import { useStore } from '../store'
 import { getSceneManager, type SceneManager } from './scene-access'
 import { buildComfyWorkflow } from './comfy'
 
-/** 'auto' = the profile's native size; 720p/1080p pin the SHORT edge. */
-export type ExportResolution = 'auto' | '720p' | '1080p'
+/**
+ * 'auto' = the profile's native size; 720p/1080p pin the SHORT edge.
+ *
+ * AW fork: `{ widthPx }` pins an exact pixel WIDTH, because an email designer
+ * works in width ("the hero is 1200 wide"), not in short edges or long edges.
+ * Height is derived from the shot's aspect rather than typed separately, and
+ * that is deliberate: the viewport mask, the camera's crop-to-aspect FOV and
+ * the exported pixels all read `shot.aspect`, so letting width and height
+ * disagree with it would hand back a frame that is not what was composed.
+ * An exact size the ratio list cannot express is reached by adding the ratio,
+ * which is why 2:1, 3:2 and 4:5 ship alongside this.
+ */
+export type ExportResolution = 'auto' | '720p' | '1080p' | { widthPx: number }
+
+/**
+ * Bounds for a custom width. The ceiling is a WebGL limit, not a preference:
+ * the export renderer draws into a canvas, and asking for more than the
+ * driver's max renderbuffer silently yields a blank or truncated frame.
+ * 8192 is the conservative floor across the GPUs this runs on.
+ */
+export const CUSTOM_WIDTH_MIN = 64
+export const CUSTOM_WIDTH_MAX = 8192
+
+export function clampCustomWidth(px: number): number {
+  if (!Number.isFinite(px)) return 1200
+  return Math.min(CUSTOM_WIDTH_MAX, Math.max(CUSTOM_WIDTH_MIN, Math.round(px)))
+}
+
+export function isCustomResolution(r: ExportResolution): r is { widthPx: number } {
+  return typeof r === 'object' && r !== null && typeof r.widthPx === 'number'
+}
+
+/** Human-readable label for the resolution control and metadata.json. */
+export function resolutionLabel(r: ExportResolution): string {
+  return isCustomResolution(r) ? `custom ${clampCustomWidth(r.widthPx)}px wide` : r
+}
 
 export interface ExportOptions {
   profileId: string
@@ -48,6 +82,11 @@ export function exportDims(
   height: number
 } {
   const ratio = ASPECT_RATIOS[aspect]
+  // AW fork: an exact width, with height following the shot's aspect.
+  if (isCustomResolution(resolution)) {
+    const width = evenDim(clampCustomWidth(resolution.widthPx))
+    return { width, height: evenDim(width / ratio) }
+  }
   if (resolution !== 'auto') {
     // Pin the short edge (720p → 1280×720 at 16:9, 720×1280 at 9:16) —
     // Seedance only accepts 720p reference files.
@@ -151,7 +190,12 @@ async function renderPassToMp4(
   return { ok: true }
 }
 
-function buildMetadata(scene: Scene, shot: Shot, profile: GeneratorProfile): string {
+function buildMetadata(
+  scene: Scene,
+  shot: Shot,
+  profile: GeneratorProfile,
+  resolution: ExportResolution = 'auto'
+): string {
   const evaluator = new ShotEvaluator(scene, shot)
   const take = scene.blocking.find((b) => b.id === shot.blockingTakeId)
   const meta = {
@@ -162,6 +206,12 @@ function buildMetadata(scene: Scene, shot: Shot, profile: GeneratorProfile): str
       duration: shot.duration,
       fps: shot.fps,
       aspect: shot.aspect,
+      // AW fork: the package used to say nothing about the size it rendered,
+      // so a still could not be matched back to the settings that made it.
+      aspectRatio: Number(ASPECT_RATIOS[shot.aspect].toFixed(6)),
+      resolution: resolutionLabel(resolution),
+      exportWidth: exportDims(profile, shot.aspect, resolution).width,
+      exportHeight: exportDims(profile, shot.aspect, resolution).height,
       sensor: shot.camera.sensorId,
       rig: shot.camera.rig,
       rigIntensity: shot.camera.rigIntensity,
@@ -339,7 +389,7 @@ export async function exportShot(opts: ExportOptions): Promise<ExportResult> {
 
     // --- Prompt, metadata, ComfyUI workflow
     await window.blockout.exportWriteFile(`${pkg}/prompt.txt`, generatePrompt(scene, shot, profile) + '\n')
-    await window.blockout.exportWriteFile(`${pkg}/metadata.json`, buildMetadata(scene, shot, profile))
+    await window.blockout.exportWriteFile(`${pkg}/metadata.json`, buildMetadata(scene, shot, profile, opts.resolution ?? 'auto'))
     if (profile.refModes.includes('depthVideo') || profile.id.startsWith('wan') || profile.id.startsWith('ltx')) {
       const workflow = buildComfyWorkflow(profile, shot, `${sanitize(shot.name)}_depth.mp4`, generatePrompt(scene, shot, profile))
       await window.blockout.exportWriteFile(`${pkg}/comfyui-workflow.json`, workflow)

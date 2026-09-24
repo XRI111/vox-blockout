@@ -11,10 +11,11 @@ import { useStore } from '../store'
 import { ASSET_CATALOG, assetSpec } from '@engine/assets'
 import { createActorMark, createCameraMark } from '@engine/schema'
 import { newId } from '@engine/ids'
+import { isAspectId } from '@engine/camera'
 import { clampScale, normalizeStretch, setPitchRoll, stretchOf } from '@engine/transform'
 import { renderStillPngForTest } from '../export/exporter'
 import { getSceneManager } from '../export/scene-access'
-import type { AspectId, GaitId } from '@engine/types'
+import type { GaitId } from '@engine/types'
 import type { ChoreoKind, FormationId, RoutineSpec } from '@engine/choreography'
 import type { FramingKind } from '../bus'
 
@@ -316,14 +317,15 @@ async function execute(action: string, params: Params): Promise<unknown> {
         const name = str(params, 'name')
         const duration = flt(params, 'duration')
         const fps = flt(params, 'fps')
-        const aspect = str(params, 'aspect') as AspectId | undefined
+        const aspect = str(params, 'aspect')
         if (name) shot.name = name
         // Never clamp marks on duration change — blocking is shared.
         if (duration !== undefined) shot.duration = Math.min(600, Math.max(0.5, duration))
         if (fps === 24 || fps === 25 || fps === 30) shot.fps = fps
-        if (aspect && ['16:9', '9:16', '2.39:1', '4:3', '1:1'].includes(aspect)) {
-          shot.aspect = aspect
-        }
+        // AW fork: narrow through the engine. This used to be a hardcoded
+        // copy of the list, so any aspect added elsewhere was silently
+        // rejected here while the UI happily offered it.
+        if (isAspectId(aspect)) shot.aspect = aspect
       })
       return { ok: true }
     }

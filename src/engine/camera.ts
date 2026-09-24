@@ -28,7 +28,24 @@ export const ASPECT_RATIOS: Record<AspectId, number> = {
   '9:16': 9 / 16,
   '2.39:1': 2.39,
   '4:3': 4 / 3,
-  '1:1': 1
+  '1:1': 1,
+  // AW fork: 2:1 and 3:2 for email heroes, 4:5 for the portrait social slot.
+  '2:1': 2,
+  '3:2': 3 / 2,
+  '4:5': 4 / 5
+}
+
+/**
+ * Every aspect, widest first. The single source of truth for UI pickers and
+ * the MCP bridge — before this existed, three files each kept their own copy
+ * of the list and the MCP validator silently rejected anything the other two
+ * had gained.
+ */
+export const ASPECT_IDS: AspectId[] = ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16']
+
+/** Narrow an untrusted string to an AspectId. */
+export function isAspectId(v: unknown): v is AspectId {
+  return typeof v === 'string' && Object.prototype.hasOwnProperty.call(ASPECT_RATIOS, v)
 }
 
 /**

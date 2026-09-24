@@ -114,7 +114,10 @@ export const BUILTIN_PROFILES: GeneratorProfile[] = [
     name: 'GPT Image 2',
     vendor: 'OpenAI',
     kind: 'image',
-    aspects: ['16:9', '9:16', '4:3', '1:1'],
+    // AW fork: image models take any framing, so they get the email-hero
+    // and social ratios too. Video profiles deliberately do not — the
+    // package would otherwise advertise a framing the model rejects.
+    aspects: ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16'],
     exportWidth: 1536,
     fps: 24,
     refModes: ['stills'],
@@ -127,7 +130,10 @@ export const BUILTIN_PROFILES: GeneratorProfile[] = [
     name: 'Nano Banana',
     vendor: 'Google',
     kind: 'image',
-    aspects: ['16:9', '9:16', '4:3', '1:1'],
+    // AW fork: image models take any framing, so they get the email-hero
+    // and social ratios too. Video profiles deliberately do not — the
+    // package would otherwise advertise a framing the model rejects.
+    aspects: ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16'],
     exportWidth: 1536,
     fps: 24,
     refModes: ['stills'],
@@ -139,7 +145,10 @@ export const BUILTIN_PROFILES: GeneratorProfile[] = [
     name: 'Ideogram',
     vendor: 'Ideogram',
     kind: 'image',
-    aspects: ['16:9', '9:16', '4:3', '1:1'],
+    // AW fork: image models take any framing, so they get the email-hero
+    // and social ratios too. Video profiles deliberately do not — the
+    // package would otherwise advertise a framing the model rejects.
+    aspects: ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16'],
     exportWidth: 1536,
     fps: 24,
     refModes: ['stills'],
@@ -151,7 +160,10 @@ export const BUILTIN_PROFILES: GeneratorProfile[] = [
     name: 'Krea 2',
     vendor: 'Krea',
     kind: 'image',
-    aspects: ['16:9', '9:16', '4:3', '1:1'],
+    // AW fork: image models take any framing, so they get the email-hero
+    // and social ratios too. Video profiles deliberately do not — the
+    // package would otherwise advertise a framing the model rejects.
+    aspects: ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16'],
     exportWidth: 1536,
     fps: 24,
     refModes: ['stills'],

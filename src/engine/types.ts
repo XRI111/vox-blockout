@@ -65,7 +65,12 @@ export type SensorId = 'super16' | 'super35' | 'fullFrame' | 'imax65'
 
 export type ShotSizeId = 'EWS' | 'WS' | 'FS' | 'MS' | 'MCU' | 'CU' | 'ECU'
 
-export type AspectId = '16:9' | '9:16' | '2.39:1' | '4:3' | '1:1'
+/**
+ * Delivery aspect. AW fork added 2:1, 3:2 and 4:5 for email heroes and social
+ * placements; the ratio table and the ordered id list live in `engine/camera.ts`
+ * and are the only places that enumerate them.
+ */
+export type AspectId = '16:9' | '9:16' | '2.39:1' | '4:3' | '1:1' | '2:1' | '3:2' | '4:5'
 
 export interface Label {
   text: string

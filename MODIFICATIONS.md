@@ -69,6 +69,24 @@ AlchemyWorx internal fork changes (2026), by **AlchemyWorx**:
   proportions lock, replacing a slider clamped 0.3 to 3.0),
   `Viewport.tsx` (Scale button), `export/gltf.ts` (same pose in the Blender
   handoff), `control/handler.ts` (MCP reads and writes the pose).
+- Delivery aspects and arbitrary export width (`src/engine/camera.ts`,
+  `src/engine/types.ts`, `src/renderer/export/exporter.ts`). `AspectId` gains
+  2:1 and 3:2 for email heroes and 4:5 for the portrait social slot, and
+  `ExportResolution` gains `{ widthPx }` for an exact pixel width, replacing a
+  three-way enum whose ceiling was a 1536 long edge. Height derives from the
+  shot's aspect rather than being typed separately, because the viewport mask,
+  the camera's crop-to-aspect FOV and the exported pixels all read
+  `shot.aspect`; letting them disagree would return a frame that is not what
+  was composed. The aspect list is now enumerated once, as `ASPECT_IDS` with an
+  `isAspectId` guard: `Viewport.tsx`, `Inspector.tsx` and the MCP handler each
+  used to keep a separate copy, and the handler's copy could reject an aspect
+  the UI already offered. `schema.ts` now normalises an unrecognised aspect to
+  16:9 on load; it was previously unvalidated, so an unknown value reached
+  `ASPECT_RATIOS` and produced NaN through the camera, the export dimensions
+  and the top-down diagram. `metadata.json` records the resolution and the
+  rendered width and height. Image generator profiles offer the new ratios;
+  video profiles deliberately do not, since the package advertises what the
+  model accepts.
 - AW build documentation under `docs/HANDOFF.md`.
 
 Downstream distributors should append their own branding and behavioral changes

@@ -13,8 +13,10 @@ import { registerSceneManager, getSceneManager as getSceneManagerSafe } from '..
 import { ReferenceUnderlay, ReferenceControls } from './ReferenceUnderlay'
 import { LENS_SET, SHOT_SIZES } from '@engine/camera'
 import type { AspectId, ShotSizeId } from '@engine/types'
+import { ASPECT_IDS } from '@engine/camera'
 
-const ASPECT_ORDER: AspectId[] = ['16:9', '9:16', '2.39:1', '4:3', '1:1']
+// AW fork: one shared list; this file used to keep its own copy.
+const ASPECT_ORDER: AspectId[] = ASPECT_IDS
 
 function Hud(): JSX.Element | null {
   const doc = useStore((s) => s.doc)

@@ -10,7 +10,7 @@
 import { useStore } from '../store'
 import { emit } from '../bus'
 import { useState } from 'react'
-import { SENSORS, LENS_SET } from '@engine/camera'
+import { ASPECT_IDS, SENSORS, LENS_SET } from '@engine/camera'
 import { GAITS } from '@engine/gaits'
 import { RIGS } from '@engine/rigs'
 import { MOTION_PRESETS, type MotionPreset } from '@engine/motions'
@@ -67,7 +67,8 @@ const LIGHTING: { id: LightingPresetId; label: string }[] = [
   { id: 'blueHourSky', label: 'Blue Hour Sky' }
 ]
 
-const ASPECTS: AspectId[] = ['16:9', '9:16', '2.39:1', '4:3', '1:1']
+// AW fork: one shared list; this file used to keep its own copy.
+const ASPECTS: AspectId[] = ASPECT_IDS
 const SHOT_SIZE_BTNS: ShotSizeId[] = ['WS', 'FS', 'MS', 'MCU', 'CU']
 
 function num(v: string): number | null {
