@@ -48,6 +48,27 @@ AlchemyWorx internal fork changes (2026), by **AlchemyWorx**:
   `buildEnv` now take the entity's `params`, and `env.planeCabin` accepts
   `params.bins = 'open'` to lift its bin doors; the bin geometry itself is
   shared between the kit and the standalone prop rather than duplicated.
+- Full static entity pose (new: `src/engine/transform.ts`,
+  `src/renderer/viewport/ground-lift.ts`). Upstream entities were upright and
+  uniformly scaled: one `rotationY` for heading, one `scale` number. Staging a
+  product needs a carry-on laid on its side and a proxy corrected in one axis,
+  so `Transform` gains optional `rotationX`, `rotationZ` and a per-axis
+  `stretch`. Two deliberate constraints: `rotationY` remains the heading field
+  (rotation is applied in YXZ order, so the roughly thirty call sites reading it
+  as facing keep their meaning), and `scale` remains the single real-world size
+  multiplier that `entityHeight` and auto-framing consume, with per-axis
+  correction separate. All three fields are optional and an identity value
+  serializes to absent, so pre-fork projects migrate to the identity pose and
+  round-trip without gaining keys. Because assets are built with their origin at
+  ground level, a tilt is followed by a ground-contact lift applied to the
+  rendered object only; the document keeps the clean value. Upstream files
+  touched: `types.ts` (three optional fields), `schema.ts` (additive migration),
+  `SceneManager.ts` (pose on both the sync and the per-frame evaluator path,
+  unconstrained rotate gizmo plus a scale mode, `S` shortcut),
+  `Inspector.tsx` (pitch/yaw/roll fields, numeric scale, per-axis stretch with a
+  proportions lock, replacing a slider clamped 0.3 to 3.0),
+  `Viewport.tsx` (Scale button), `export/gltf.ts` (same pose in the Blender
+  handoff), `control/handler.ts` (MCP reads and writes the pose).
 - AW build documentation under `docs/HANDOFF.md`.
 
 Downstream distributors should append their own branding and behavioral changes

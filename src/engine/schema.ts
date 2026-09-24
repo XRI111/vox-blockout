@@ -16,8 +16,10 @@ import type {
   Scene,
   ScanRef,
   Shot,
+  Transform,
   V3
 } from './types'
+import { normalizeStretch } from './transform'
 import { normalizeProjectRelativePath } from '../shared/portable-paths'
 
 export const SCHEMA_VERSION = 1 as const
@@ -248,6 +250,26 @@ export function serializeProject(doc: ProjectDoc): string {
  */
 function migrateProject(doc: ProjectDoc): ProjectDoc {
   for (const scene of doc.scenes) {
+    // AW fork: pitch, roll and per-axis stretch are additive. A document
+    // written before them carries neither key; normalize junk to the identity
+    // pose rather than rejecting the project, and drop an identity stretch so
+    // untouched entities keep round-tripping byte-identically.
+    for (const entity of scene.entities) {
+      const t = entity.transform as Transform & { rotationX?: unknown; rotationZ?: unknown }
+      if (typeof t.rotationX !== 'number' || !Number.isFinite(t.rotationX)) delete t.rotationX
+      if (typeof t.rotationZ !== 'number' || !Number.isFinite(t.rotationZ)) delete t.rotationZ
+      const s = (entity.transform as { stretch?: Partial<V3> }).stretch
+      entity.transform.stretch = normalizeStretch(
+        s
+          ? {
+              x: typeof s.x === 'number' ? s.x : 1,
+              y: typeof s.y === 'number' ? s.y : 1,
+              z: typeof s.z === 'number' ? s.z : 1
+            }
+          : undefined
+      )
+      if (!entity.transform.stretch) delete entity.transform.stretch
+    }
     const raw = (scene as { scans?: unknown }).scans
     if (!Array.isArray(raw)) {
       scene.scans = []

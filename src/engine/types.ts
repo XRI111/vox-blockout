@@ -1,3 +1,4 @@
+// Modified for the AlchemyWorx internal fork (2026); see MODIFICATIONS.md.
 /**
  * Blockout document model.
  *
@@ -74,9 +75,30 @@ export interface Label {
 
 export interface Transform {
   position: V3
-  /** Yaw around +Y. Entities are upright; full rotation lives on marks/camera. */
+  /**
+   * Yaw around +Y, and the entity's heading: choreography facing, marriage
+   * offsets and the MCP bridge all read this as "which way is it pointing".
+   * Pitch and roll are separate so that stays true however far it is tilted.
+   */
   rotationY: number
+  /** Uniform real-world size multiplier. Feeds `entityHeight`, so it stays one
+   *  number; per-axis correction is `stretch`. */
   scale: number
+  /**
+   * AW fork: static pitch around +X. Optional — absent means upright, which is
+   * how every project written before this field reads. Rotation is applied in
+   * YXZ order (see `engine/transform.ts`). Marks still carry yaw alone, so
+   * this is a pose, not an animation.
+   */
+  rotationX?: number
+  /** AW fork: static roll around +Z. Optional, same contract as `rotationX`. */
+  rotationZ?: number
+  /**
+   * AW fork: per-axis multipliers applied on top of `scale`, for correcting a
+   * proxy that is off in one dimension. Absent or all-ones means proportions
+   * are intact. Resolve through `engine/transform.ts`, never by hand.
+   */
+  stretch?: V3
 }
 
 export interface Entity {

@@ -1,3 +1,4 @@
+// Modified for the AlchemyWorx internal fork (2026); see MODIFICATIONS.md.
 /**
  * Blender handoff: bake the current shot — entities, blocking motion, and
  * the animated camera (rig shake included) — into a .glb that Blender
@@ -9,8 +10,10 @@ import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { ShotEvaluator } from '@engine/evaluate'
 import { ASPECT_RATIOS } from '@engine/camera'
+import { ENTITY_EULER_ORDER, effectiveScale, rotationOf } from '@engine/transform'
 import { useStore } from '../store'
 import { buildAsset } from '../viewport/builders'
+import { groundLiftFor } from '../viewport/ground-lift'
 import { exportDims } from './exporter'
 import { getProfile } from '@engine/profiles'
 
@@ -38,8 +41,16 @@ export async function exportGlb(profileId: string): Promise<{ ok: boolean; packa
     g.name = uniqueName(sanitize(entity.label?.text || entity.name || entity.id), usedNames)
     g.add(built.group)
     g.position.set(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z)
-    g.rotation.y = entity.transform.rotationY
-    g.scale.setScalar(entity.transform.scale)
+    // AW fork: full static pose, resolved through the engine so the .glb and
+    // the viewport cannot drift apart. YXZ, per ENTITY_EULER_ORDER.
+    const r = rotationOf(entity.transform)
+    g.rotation.order = ENTITY_EULER_ORDER
+    g.rotation.set(r.x, r.y, r.z)
+    const sc = effectiveScale(entity.transform)
+    g.scale.set(sc.x, sc.y, sc.z)
+    // Same ground contact the viewport applies, so a bag posed on its side
+    // arrives in Blender resting on the floor rather than sunk into it.
+    if (r.x !== 0 || r.z !== 0) g.position.y += groundLiftFor(g, entity.transform.position.y)
     built.setTint(entity.label?.color ?? null)
     root.add(g)
     nodes.set(entity.id, g)

@@ -301,8 +301,8 @@ function TakeBar(): JSX.Element {
 }
 
 function GizmoModeRow(): JSX.Element {
-  const [mode, setMode] = useState<'translate' | 'rotate'>('translate')
-  const apply = (m: 'translate' | 'rotate'): void => {
+  const [mode, setMode] = useState<'translate' | 'rotate' | 'scale'>('translate')
+  const apply = (m: 'translate' | 'rotate' | 'scale'): void => {
     setMode(m)
     getSceneManagerSafe()?.setGizmoMode(m)
   }
@@ -321,6 +321,13 @@ function GizmoModeRow(): JSX.Element {
         title="Rotate the selection — spin people, cars, props, the camera (R)"
       >
         ⟳ Rotate
+      </button>
+      <button
+        className={`btn small ${mode === 'scale' ? 'active' : ''}`}
+        onClick={() => apply('scale')}
+        title="Resize the selection — drag one axis to correct a proxy that is off in one dimension (S)"
+      >
+        ⤢ Scale
       </button>
     </div>
   )
