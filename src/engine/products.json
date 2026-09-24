@@ -1,0 +1,160 @@
+[
+  {
+    "id": "biaggi.runway-carry-on",
+    "name": "Biaggi Runway Carry-On",
+    "category": "luggage",
+    "unit": "in",
+    "promptNoun": "a hardside hybrid carry-on suitcase",
+    "source": "biaggi.com/products/runway-hardside-hybrid-carry-on, pulled 2026-09-22: 22\"x14\"x8\", expands to 22\"x14\"x10.5\". The 22\" airline figure is the overall height, so the shell is modelled at 20.4\" with 1.6\" spinner wheels below it to total 22.0\".",
+    "pieces": [
+      {
+        "archetype": "roundedBox",
+        "width": 14,
+        "height": 20.4,
+        "depth": 8,
+        "expandedDepth": 10.5,
+        "radius": 1.1,
+        "door": {
+          "face": "front",
+          "hinge": "bottom",
+          "thickness": 0.5,
+          "coverage": 0.9,
+          "foldFraction": 0.42
+        },
+        "parts": [
+          { "kind": "wheels", "count": 4, "size": 1.6, "depth": 0.85 },
+          { "kind": "handle", "face": "back", "size": 9, "depth": 0.9, "stops": [0, 9.5, 16] }
+        ]
+      }
+    ],
+    "states": [
+      { "id": "closed", "label": "Closed" },
+      { "id": "closedHandleUp", "label": "Closed, handle up", "handleStop": 2 },
+      { "id": "open", "label": "Front panel open", "door": 105 },
+      { "id": "topFolded", "label": "Top panel folded down", "fold": 115 },
+      { "id": "expanded", "label": "Expanded", "expand": true }
+    ],
+    "defaultState": "closed"
+  },
+  {
+    "id": "biaggi.zipcube-carry-on",
+    "name": "Biaggi Zipcube (carry-on size)",
+    "category": "luggage",
+    "unit": "in",
+    "promptNoun": "a fabric packing cube",
+    "source": "biaggi.com/products/copy-of-zipcubes-3-pack-carry-on-size, pulled 2026-09-22: each cube is 13.5\"x9.5\"x3\".",
+    "pieces": [
+      {
+        "archetype": "roundedBox",
+        "width": 13.5,
+        "height": 3,
+        "depth": 9.5,
+        "radius": 0.5
+      }
+    ],
+    "states": [{ "id": "default", "label": "Packed" }],
+    "defaultState": "default"
+  },
+  {
+    "id": "biaggi.zipcube-mini",
+    "name": "Biaggi Zipcube Mini",
+    "category": "luggage",
+    "unit": "in",
+    "promptNoun": "a small fabric packing cube",
+    "source": "biaggi.com/products/zipcubes-mini-cube-duo, pulled 2026-09-22: both cubes are 7\"x7\"x4\".",
+    "pieces": [
+      {
+        "archetype": "roundedBox",
+        "width": 7,
+        "height": 4,
+        "depth": 7,
+        "radius": 0.45
+      }
+    ],
+    "states": [{ "id": "default", "label": "Packed" }],
+    "defaultState": "default"
+  },
+  {
+    "id": "generic.cosmetic-compact",
+    "name": "Cosmetic compact",
+    "category": "cosmetics",
+    "unit": "in",
+    "promptNoun": "a pressed-powder compact",
+    "source": "Generic archetype sample, not a client product. Typical pressed-powder compact footprint; replace with client spec before any client work.",
+    "pieces": [
+      {
+        "archetype": "cappedCylinder",
+        "width": 3,
+        "height": 0.7,
+        "radius": 0.12,
+        "door": {
+          "face": "top",
+          "hinge": "top",
+          "thickness": 0.3,
+          "coverage": 1
+        }
+      }
+    ],
+    "states": [
+      { "id": "closed", "label": "Closed" },
+      { "id": "open", "label": "Open", "door": 110 }
+    ],
+    "defaultState": "closed"
+  },
+  {
+    "id": "generic.lipstick-tube",
+    "name": "Lipstick tube",
+    "category": "cosmetics",
+    "unit": "in",
+    "promptNoun": "a lipstick tube",
+    "source": "Generic archetype sample, not a client product. Sized as a standard bullet lipstick: 0.75\" body diameter, 3.4\" overall with the cap on. The small end of the scale range this system has to cover.",
+    "pieces": [
+      {
+        "archetype": "taperedTube",
+        "width": 0.78,
+        "topWidth": 0.72,
+        "height": 2.05,
+        "radius": 0.05,
+        "parts": [{ "kind": "cap", "size": 0.82, "depth": 1.35 }]
+      }
+    ],
+    "states": [{ "id": "capped", "label": "Capped" }],
+    "defaultState": "capped"
+  },
+  {
+    "id": "generic.bottle-warmer",
+    "name": "Bottle warmer (compound sample)",
+    "category": "appliance",
+    "unit": "in",
+    "promptNoun": "a countertop baby bottle warmer",
+    "source": "Generic archetype sample, not a client product. Exists to prove compound composition: a box base plus an offset cylindrical chamber with a hinged lid is how odd proprietary appliance shapes get covered without new code.",
+    "pieces": [
+      {
+        "archetype": "roundedBox",
+        "width": 6,
+        "height": 3.5,
+        "depth": 6.5,
+        "radius": 0.4,
+        "parts": [{ "kind": "feet", "count": 4, "size": 0.5, "depth": 0.5 }]
+      },
+      {
+        "archetype": "cappedCylinder",
+        "width": 3.4,
+        "height": 5,
+        "radius": 0.2,
+        "offset": { "x": 0, "y": 3.5, "z": -0.6 },
+        "door": {
+          "face": "top",
+          "hinge": "top",
+          "thickness": 0.3,
+          "coverage": 1
+        }
+      }
+    ],
+    "states": [
+      { "id": "closed", "label": "Lid closed" },
+      { "id": "open", "label": "Lid open", "door": 100 }
+    ],
+    "defaultState": "closed"
+  }
+]

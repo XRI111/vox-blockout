@@ -256,6 +256,10 @@ export async function exportShot(opts: ExportOptions): Promise<ExportResult> {
   if (useStore.getState().exportProgress.running) {
     return { ok: false, error: 'An export is already running.' }
   }
+  // Imported models arrive over IPC. Render before they land and the package
+  // silently ships without the product.
+  await manager.settleAsyncLoads()
+
   const profile = getProfile(opts.profileId)
   const { width, height } = exportDims(profile, shot.aspect, opts.resolution ?? 'auto')
 
@@ -396,6 +400,8 @@ export async function exportStillAtPlayhead(
   if (!scene || !shot || !folder || !manager) {
     return { ok: false, error: 'Open a project and select a shot first.' }
   }
+  await manager.settleAsyncLoads()
+
   const t = s.time
   const { width, height } = exportDims(getProfile(profileId), shot.aspect, resolution)
   const { canvas, renderer } = getExportRenderer()
@@ -470,6 +476,7 @@ export async function exportContactSheet(): Promise<ExportResult> {
   const folder = s.projectFolder
   const manager = getSceneManager()
   if (!scene || !folder || !manager) return { ok: false, error: 'No scene.' }
+  await manager.settleAsyncLoads()
   const originalShot = s.shotId
 
   const cell = { w: 640, h: 360 }

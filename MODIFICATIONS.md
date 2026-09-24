@@ -15,6 +15,35 @@ Portable desktop work added in 2026, contributed by
 - Process-tree-aware export cancellation and cross-platform FFmpeg concat files.
 - Windows/macOS/Linux CI, packaging provenance, third-party notices, and SBOM generation.
 
+AlchemyWorx internal fork changes (2026), by **AlchemyWorx**:
+
+- Opt-in software rendering (`src/shared/software-gl.ts`, two lines in
+  `src/main/index.ts`). When `BLOCKOUT_SOFTWARE_GL` is set to a truthy value the
+  main process appends ANGLE/SwiftShader Chromium switches before `ready`, so
+  the app runs on hosts with no GPU (headless Linux containers, GPU-less CI
+  images) where Chromium otherwise fails WebGL context creation with
+  "BindToCurrentSequence failed". Default off: an unset variable leaves launch
+  behaviour byte-for-byte unchanged. Software and hardware backends are not
+  guaranteed pixel-identical to each other, so golden frames must not be
+  compared across the two.
+- Imported-model correctness in `src/renderer/viewport/SceneManager.ts` and
+  `src/renderer/export/exporter.ts`: custom GLB/glTF loads are tracked and
+  awaited before any export renders, loads start when `sourceFile` is attached
+  rather than only at visual creation, and `GLTFLoader.parse` reports errors
+  instead of leaving a promise pending. `.obj` removed from the import picker
+  in `src/renderer/panels/Library.tsx`, since only `GLTFLoader` is wired.
+- Generic parametric product system (new: `src/engine/products.ts`,
+  `src/engine/products.json`, `src/renderer/viewport/product-builder.ts`,
+  `src/main/products.ts`). Products are data presets resolved by a pure engine
+  module into metre-space primitives; three archetypes, optional hinged
+  doors/lids, attachable parts, and compound multi-piece presets. Projects may
+  override or add presets from their own `products/` folder. Upstream files
+  touched: `assets.ts` (catalog derives product specs), `builders.ts` (one
+  dispatch branch), `Library.tsx`, `Inspector.tsx`, `store.ts`,
+  `SceneManager.ts` (scale-aware grid, gizmo snap and camera near planes),
+  `src/main/index.ts` and `src/preload/index.ts` (one IPC each).
+- AW build documentation under `docs/HANDOFF.md`.
+
 Downstream distributors should append their own branding and behavioral changes
 to this file rather than replacing the original attribution.
 

@@ -19,6 +19,7 @@ import {
   parseProject
 } from '@engine/schema'
 import { assetSpec } from '@engine/assets'
+import { clearProjectProducts, parseProductFile, setProjectProducts } from '@engine/products'
 import { newId } from '@engine/ids'
 import { generateSequence, choreographMotion } from '@engine/sequences'
 import { buildRoutine } from '@engine/choreography'
@@ -239,6 +240,23 @@ function reconcileSelection(doc: ProjectDoc, sceneId: string | null, shotId: str
   return { sceneId: scene?.id ?? null, shotId: shot?.id ?? null }
 }
 
+/**
+ * AW fork: swap in the opened project's own product presets. Project presets
+ * override built-ins by id, so a client can retune a shipped product without
+ * forking the app. Failures are silent by design: a missing or malformed
+ * products/ folder must never stop a project from opening.
+ */
+async function adoptProjectProducts(folder: string): Promise<void> {
+  clearProjectProducts()
+  try {
+    const files = await window.blockout.loadProjectProducts(folder)
+    const presets = files.flatMap(parseProductFile)
+    if (presets.length > 0) setProjectProducts(presets)
+  } catch {
+    // Leave the built-ins in place.
+  }
+}
+
 export const useStore = create<BlockoutState>((set, get) => ({
   mode: 'stage',
   projectFolder: null,
@@ -267,6 +285,7 @@ export const useStore = create<BlockoutState>((set, get) => ({
   exportProgress: { running: false, label: '', frame: 0, totalFrames: 0, cancelRequested: false },
 
   newProject(folder, name) {
+    void adoptProjectProducts(folder)
     const doc = createProject(name)
     const scene = doc.scenes[0]!
     set({
@@ -285,6 +304,7 @@ export const useStore = create<BlockoutState>((set, get) => ({
   },
 
   loadFromJson(folder, json) {
+    void adoptProjectProducts(folder)
     const { doc, issues } = parseProject(json)
     if (!doc) {
       get().toast(`Could not open project: ${issues[0]?.message ?? 'unknown error'}`, 'error')

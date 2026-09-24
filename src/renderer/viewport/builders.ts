@@ -11,6 +11,8 @@
 import * as THREE from 'three'
 import type { GaitId } from '@engine/types'
 import { assetSpec } from '@engine/assets'
+import { getProduct, isProductAssetId, presetIdFromAssetId, resolveProduct } from '@engine/products'
+import { buildResolvedProduct } from './product-builder'
 
 export interface AnimInput {
   gait: GaitId
@@ -6096,6 +6098,18 @@ function buildFallback(assetId: string): BuiltAsset {
 // ---------------------------------------------------------------------------
 
 export function buildAsset(assetId: string, params?: Record<string, number | string>): BuiltAsset {
+  // AW fork: data-driven product presets. `params.state` picks a declared
+  // state (closed / open / top-folded / expanded), so switching a panel open
+  // is a document mutation, not a different asset.
+  if (isProductAssetId(assetId)) {
+    const preset = getProduct(presetIdFromAssetId(assetId))
+    if (preset) {
+      const state = typeof params?.state === 'string' ? params.state : undefined
+      const resolved = resolveProduct(preset, state)
+      const group = buildResolvedProduct(resolved)
+      return finalizeStatic(group, resolved.height)
+    }
+  }
   if (assetId.startsWith('person.')) return buildPerson(assetId, params)
   if (assetId === 'animal.bird') return buildBird(assetId)
   if (assetId.startsWith('animal.')) return buildQuadruped(assetId)

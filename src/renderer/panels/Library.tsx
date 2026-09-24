@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { ASSET_CATALOG, type AssetSpec } from '@engine/assets'
+import { placeableAssets, type AssetSpec } from '@engine/assets'
 import type { EntityCategory } from '@engine/types'
 import { sequenceStyles, type SequenceType } from '@engine/sequences'
 import {
@@ -641,6 +641,13 @@ const THUMBS: Record<string, string> = {
 }
 
 function thumbFor(id: string): string {
+  // AW fork: product presets are data, so they get a thumb by category
+  // rather than a hardcoded per-id entry.
+  if (id.startsWith('product.')) {
+    if (id.includes('lipstick') || id.includes('compact')) return '💄'
+    if (id.includes('warmer') || id.includes('appliance')) return '🍼'
+    return '🧳'
+  }
   return THUMBS[id] ?? '📦'
 }
 
@@ -678,7 +685,7 @@ export function Library(): JSX.Element {
     ).map(({ key, title }) => ({
       key,
       title,
-      items: ASSET_CATALOG.filter((a) => a.category === key && matches(a))
+      items: placeableAssets().filter((a) => a.category === key && matches(a))
     })).filter((g) => g.items.length > 0)
   }, [query, categoryFilter])
 
@@ -699,8 +706,11 @@ export function Library(): JSX.Element {
   }
 
   const onImport = async (): Promise<void> => {
+    // glTF only: GLTFLoader is the sole loader wired up, so offering .obj here
+    // just produced a copied file that failed to parse. Wiring OBJLoader is
+    // ~15 lines if a client ever ships OBJ; converting to .glb is easier.
     const path = await window.blockout.pickFile([
-      { name: '3D Models', extensions: ['glb', 'gltf', 'obj'] }
+      { name: '3D Models', extensions: ['glb', 'gltf'] }
     ])
     if (!path) return
     if (!projectFolder) {
@@ -756,14 +766,14 @@ export function Library(): JSX.Element {
             ))}
           </select>
           <select
-            value={placingAssetId && ASSET_CATALOG.some((a) => a.id === placingAssetId) ? placingAssetId : ''}
+            value={placingAssetId && placeableAssets().some((a) => a.id === placingAssetId) ? placingAssetId : ''}
             onChange={(e) => setPlacingAsset(e.target.value || null)}
             title="Pick from the full list — then click the floor to place it"
           >
             <option value="">Place from list…</option>
             {CATEGORY_ORDER.map((c) => (
               <optgroup key={c.key} label={c.title}>
-                {ASSET_CATALOG.filter((a) => a.category === c.key).map((a) => (
+                {placeableAssets().filter((a) => a.category === c.key).map((a) => (
                   <option key={a.id} value={a.id}>
                     {thumbFor(a.id)} {a.name}
                   </option>
