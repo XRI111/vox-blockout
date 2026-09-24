@@ -1563,6 +1563,57 @@ export class SceneManager {
   }
 
   /**
+   * AW fork: project world points with the RENDERER's own shot camera.
+   *
+   * Ground truth for `engine/safe-zone.ts`'s pure projection. The engine has to
+   * reproduce this camera exactly — Euler order, aspect, crop-to-aspect FOV —
+   * or the headline overlay lands somewhere the render does not. A pixel diff
+   * proves the chain touches reality but cannot cover many camera poses,
+   * because a subject's cast shadow is in the pixels and not in the box. This
+   * covers the poses; the pixel test covers reality.
+   */
+  projectWithRendererCamera(
+    t: number,
+    points: { x: number; y: number; z: number }[]
+  ): { x: number; y: number }[] {
+    this.applyTime(t)
+    this.shotCam.updateMatrixWorld(true)
+    this.shotCam.updateProjectionMatrix()
+    const v = new THREE.Vector3()
+    return points.map((p) => {
+      v.set(p.x, p.y, p.z).project(this.shotCam)
+      // NDC to frame space: origin top-left, y down.
+      return { x: (v.x + 1) / 2, y: (1 - v.y) / 2 }
+    })
+  }
+
+  /**
+   * AW fork: world-space bounds of every entity visual, for the headline
+   * safe-zone measurement.
+   *
+   * The engine can size a subject from the catalog's `height` and `footprint`,
+   * but those describe the subject rather than everything attached to it: a
+   * suitcase declares 0.7 m and builds a pull handle above that. Close enough
+   * for auto-framing, not for telling a designer a strip of frame is clear. So
+   * the real geometry is measured here and handed to the engine, which keeps
+   * the maths pure and the answer exact.
+   */
+  entityWorldBounds(): Map<string, { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }> {
+    const out = new Map<string, { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }>()
+    const box = new THREE.Box3()
+    for (const [id, visual] of this.visuals) {
+      visual.root.updateMatrixWorld(true)
+      box.setFromObject(visual.root)
+      if (box.isEmpty() || !Number.isFinite(box.min.y)) continue
+      out.set(id, {
+        min: { x: box.min.x, y: box.min.y, z: box.min.z },
+        max: { x: box.max.x, y: box.max.y, z: box.max.z }
+      })
+    }
+    return out
+  }
+
+  /**
    * Ground snap: rest each selected entity's base on whatever is under it
    * (the floor, a table, a truck bed) — one click, no fiddling with Y.
    */

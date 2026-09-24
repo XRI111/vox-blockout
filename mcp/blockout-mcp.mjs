@@ -159,8 +159,21 @@ const TOOLS = [
       properties: {
         name: { type: 'string', description: 'Shot name.' },
         duration: { type: 'number', description: 'Shot duration in seconds.' },
-        aspect: { type: 'string', description: 'Aspect ratio, e.g. "16:9", "9:16", "2.39:1".' },
-        fps: { type: 'number', description: 'Frames per second.' }
+        aspect: {
+          type: 'string',
+          description:
+            'Aspect ratio: "2.39:1", "2:1", "16:9", "3:2", "4:3", "1:1", "4:5" or "9:16".'
+        },
+        fps: { type: 'number', description: 'Frames per second.' },
+        safeZone: {
+          type: 'string',
+          description:
+            'Region kept clear for headline copy: "off", "leftThird", "rightThird", "topBand", "bottomBand", or "custom" with zoneX/zoneY/zoneW/zoneH. Written into prompt.txt and metadata.json.'
+        },
+        zoneX: { type: 'number', description: 'Custom zone left edge, percent of frame width.' },
+        zoneY: { type: 'number', description: 'Custom zone top edge, percent of frame height.' },
+        zoneW: { type: 'number', description: 'Custom zone width, percent of frame width.' },
+        zoneH: { type: 'number', description: 'Custom zone height, percent of frame height.' }
       },
       additionalProperties: false
     }

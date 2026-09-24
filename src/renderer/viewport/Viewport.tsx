@@ -5,13 +5,15 @@
  * empty states, and the reference-video underlay.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { emit, type FramingKind } from '../bus'
 import { SceneManager } from './SceneManager'
 import { registerSceneManager, getSceneManager as getSceneManagerSafe } from '../export/scene-access'
 import { ReferenceUnderlay, ReferenceControls } from './ReferenceUnderlay'
 import { LENS_SET, SHOT_SIZES } from '@engine/camera'
+import { ShotEvaluator } from '@engine/evaluate'
+import { analyzeSafeZone, type SafeZoneReport } from '@engine/safe-zone'
 import type { AspectId, ShotSizeId } from '@engine/types'
 import { ASPECT_IDS } from '@engine/camera'
 
@@ -335,6 +337,104 @@ function GizmoModeRow(): JSX.Element {
   )
 }
 
+/**
+ * AW fork: the headline safe zone, drawn over the framed picture.
+ *
+ * Two things are on screen and both matter. The zone itself, so the designer
+ * can see the region a headline will occupy against the real composition. And
+ * the projected bounds of every subject reaching into it, so the "% clear"
+ * figure is something they can check with their eyes rather than take on
+ * trust — the number comes from those boxes, so showing them makes the
+ * measurement self-evidencing.
+ */
+function SafeZoneOverlay(): JSX.Element | null {
+  const doc = useStore((s) => s.doc)
+  const sceneId = useStore((s) => s.sceneId)
+  const shotId = useStore((s) => s.shotId)
+  const time = useStore((s) => s.time)
+
+  const scene = doc?.scenes.find((s) => s.id === sceneId)
+  const shot =
+    scene?.shots.find((s) => s.id === shotId) ?? scene?.drafts?.find((s) => s.id === shotId)
+
+  // Two memos, not one: constructing an evaluator walks every track, and this
+  // component re-renders on every frame of playback. Keyed on the scene and
+  // shot, the evaluator survives the playhead moving.
+  const evaluator = useMemo(
+    () => (scene && shot?.safeZone ? new ShotEvaluator(scene, shot) : null),
+    [scene, shot]
+  )
+  const report: SafeZoneReport | null = useMemo(() => {
+    if (!scene || !shot?.safeZone || !evaluator) return null
+    return analyzeSafeZone(
+      scene,
+      shot,
+      evaluator.evaluate(time),
+      // Real geometry when the viewport has it, so the boxes on screen are the
+      // ones being measured rather than catalog approximations of them.
+      getSceneManagerSafe()?.entityWorldBounds()
+    )
+  }, [scene, shot, evaluator, time])
+
+  if (!report) return null
+  const pct = Math.round(report.negativeSpace * 100)
+  // Amber below this, because a headline needs most of its box clear to read.
+  const clear = pct >= 90
+  const accent = clear ? 'rgba(120, 220, 160, 0.95)' : 'rgba(250, 200, 100, 0.95)'
+  const asPct = (n: number): string => `${n * 100}%`
+
+  return (
+    <>
+      {/* Subject bounds: what the percentage actually counted. */}
+      {report.boxes.map((b) => (
+        <div
+          key={b.entityId}
+          style={{
+            position: 'absolute',
+            left: asPct(b.rect.x),
+            top: asPct(b.rect.y),
+            width: asPct(b.rect.w),
+            height: asPct(b.rect.h),
+            border: '1px dashed rgba(255,255,255,0.22)',
+            pointerEvents: 'none'
+          }}
+        />
+      ))}
+      <div
+        style={{
+          position: 'absolute',
+          left: asPct(report.rect.x),
+          top: asPct(report.rect.y),
+          width: asPct(report.rect.w),
+          height: asPct(report.rect.h),
+          border: `1px dashed ${accent}`,
+          background: clear ? 'rgba(120, 220, 160, 0.07)' : 'rgba(250, 200, 100, 0.10)',
+          pointerEvents: 'none',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center'
+        }}
+      >
+        <div
+          style={{
+            marginTop: 4,
+            padding: '1px 6px',
+            fontSize: 10,
+            fontVariantNumeric: 'tabular-nums',
+            color: accent,
+            background: 'rgba(0,0,0,0.55)',
+            borderRadius: 3,
+            whiteSpace: 'nowrap'
+          }}
+        >
+          HEADLINE · {pct}% clear
+          {report.intruders.length > 0 && ` · ${report.intruders[0]!.name}`}
+        </div>
+      </div>
+    </>
+  )
+}
+
 export function Viewport(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [viewRect, setViewRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
@@ -593,6 +693,9 @@ export function Viewport(): JSX.Element {
               border: '1px solid rgba(255,255,255,0.10)'
             }}
           />
+          {/* AW fork: headline safe zone, inside the framed picture so the
+              rect is a fraction of the delivered frame, not of the canvas. */}
+          <SafeZoneOverlay />
         </div>
       )}
 

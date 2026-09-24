@@ -9,8 +9,17 @@
 
 import { useStore } from '../store'
 import { emit } from '../bus'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ASPECT_IDS, SENSORS, LENS_SET } from '@engine/camera'
+import {
+  SAFE_ZONE_LABELS,
+  SAFE_ZONE_PRESET_IDS,
+  analyzeSafeZone,
+  clampRect,
+  resolveSafeZone,
+  type FrameRect,
+  type SafeZone
+} from '@engine/safe-zone'
 import { GAITS } from '@engine/gaits'
 import { RIGS } from '@engine/rigs'
 import { MOTION_PRESETS, type MotionPreset } from '@engine/motions'
@@ -561,6 +570,7 @@ function ShotSection({ scene, shot }: { scene: Scene; shot: Shot }): JSX.Element
           ))}
         </div>
       </div>
+      <SafeZoneFields scene={scene} shot={shot} />
       <div className="field">
         <label>Notes</label>
         <textarea
@@ -2307,5 +2317,121 @@ function ScaleFields({
         </label>
       </div>
     </>
+  )
+}
+
+
+/**
+ * AW fork: the headline safe zone control.
+ *
+ * The four presets cover what AW's email templates actually use; a custom rect
+ * covers the rest, including the pilot's "headline left 40%", which is a
+ * percentage rather than a third. Percentages are the unit here because that is
+ * how a designer specifies a zone; the document stores the 0..1 fraction.
+ *
+ * The "% clear" readout duplicates the viewport badge on purpose: the zone is
+ * usually set from the Inspector while framing, and the number is the whole
+ * reason the zone exists, so it should not require switching to look-through.
+ */
+function SafeZoneFields({ scene, shot }: { scene: Scene; shot: Shot }): JSX.Element {
+  const mutate = useStore((s) => s.mutate)
+  const time = useStore((s) => s.time)
+  const zone = shot.safeZone
+  const rect = resolveSafeZone(zone)
+
+  // Split so the playhead moving does not rebuild the evaluator, which walks
+  // every track in the scene.
+  const evaluator = useMemo(
+    () => (zone ? new ShotEvaluator(scene, shot) : null),
+    [scene, shot, zone]
+  )
+  const report = useMemo(
+    () =>
+      evaluator
+        ? analyzeSafeZone(
+            scene,
+            shot,
+            evaluator.evaluate(time),
+            getSceneManager()?.entityWorldBounds()
+          )
+        : null,
+    [scene, shot, evaluator, time]
+  )
+
+  const setZone = (next: SafeZone | undefined): void => {
+    mutate('headline safe zone', (doc) => {
+      const sh = findShotOrDraft(doc, scene.id, shot.id)
+      if (!sh) return
+      if (next) sh.safeZone = next
+      else delete sh.safeZone
+    })
+  }
+
+  // Switching to custom seeds from whatever is on screen, so the rect starts
+  // where the designer can already see it rather than at some default.
+  const toCustom = (): void =>
+    setZone({ preset: 'custom', rect: rect ?? { x: 0, y: 0, w: 0.4, h: 1 } })
+
+  const editRect = (key: keyof FrameRect, pct: number): void => {
+    const base = rect ?? { x: 0, y: 0, w: 0.4, h: 1 }
+    setZone({ preset: 'custom', rect: clampRect({ ...base, [key]: pct / 100 }) })
+  }
+
+  const pctOf = (n: number): number => Math.round(n * 1000) / 10
+
+  return (
+    <div className="field">
+      <label title="Region kept clear for headline copy. Written into prompt.txt and metadata.json.">
+        Headline zone
+      </label>
+      <div className="seg">
+        <button className={!zone ? 'active' : ''} onClick={() => setZone(undefined)}>
+          Off
+        </button>
+        {SAFE_ZONE_PRESET_IDS.filter((id) => id !== 'custom').map((id) => (
+          <button
+            key={id}
+            className={zone?.preset === id ? 'active' : ''}
+            onClick={() => setZone({ preset: id })}
+          >
+            {SAFE_ZONE_LABELS[id]}
+          </button>
+        ))}
+        <button className={zone?.preset === 'custom' ? 'active' : ''} onClick={toCustom}>
+          Custom
+        </button>
+      </div>
+      {zone?.preset === 'custom' && rect && (
+        <div className="field-row" style={{ marginTop: 6 }}>
+          {(['x', 'y', 'w', 'h'] as const).map((key) => (
+            <label key={key} style={{ flex: 1 }}>
+              <span style={{ textTransform: 'uppercase' }}>{key}</span> %
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={pctOf(rect[key])}
+                onChange={(e) => {
+                  const n = num(e.target.value)
+                  if (n !== null) editRect(key, n)
+                }}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+      {report && (
+        <div className="hint" style={{ marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
+          {Math.round(report.negativeSpace * 100)}% clear
+          {report.intruders.length > 0
+            ? ` · ${report.intruders
+                .slice(0, 2)
+                .map((i) => i.name)
+                .join(', ')} in the zone`
+            : ' · nothing in the zone'}
+        </div>
+      )}
+    </div>
   )
 }

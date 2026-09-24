@@ -11,6 +11,8 @@
  * in meters, angles in radians unless suffixed Deg.
  */
 
+import type { SafeZone } from './safe-zone'
+
 export interface V3 {
   x: number
   y: number
@@ -237,6 +239,14 @@ export interface Shot {
   /** Inactive cameras — switch via the camera inspector (Cam A/B/C chips). */
   cameraBank?: { name: string; camera: ShotCamera }[]
   notes?: string
+  /**
+   * AW fork: the region reserved for headline copy, as normalized frame-space
+   * data so `state(t)` stays pure and the same rect drives the viewport
+   * overlay, `prompt.txt` and `metadata.json`. Absent means nothing reserved,
+   * which is how every project written before this field reads. Resolve it
+   * through `engine/safe-zone.ts`, never by hand.
+   */
+  safeZone?: SafeZone
   referenceVideo?: ReferenceVideo
   /** Set on shots living in scene.drafts: the main shot this is a version of. */
   draftOf?: string
