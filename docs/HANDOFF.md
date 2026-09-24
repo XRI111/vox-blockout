@@ -1,6 +1,6 @@
 # AW Previs Fork: Build Handoff
 **Location in repo:** `docs/aw/HANDOFF.md` | **Created:** 2026-09-21 | **Owner:** Stephane Gringer (Fractional CMO, AlchemyWorx)
-**Status line (keep current):** Baselined and audited 2026-09-22, all gates green. Scope: dimensional accuracy over product fidelity, generic archetypes over product-specific code. Phase 1 items 1 to 6 shipped, including item 4b (full static entity pose) added by owner decision 2026-09-24; animated rotation deferred. Item 7 not started.
+**Status line (keep current):** Baselined and audited 2026-09-22, all gates green. Scope: dimensional accuracy over product fidelity, generic archetypes over product-specific code. Phase 1 complete: items 1 to 6 shipped plus item 4b (full static entity pose, owner-added 2026-09-24; animated rotation deferred), and item 7 delivered as a report. See "Item 7 report" below for six findings, none fixed.
 
 This is a living document. Claude Code: read it at the start of every session, and update the Status Log at the bottom the moment anything runs, ships, or breaks, with an honest status ("built, untested", "smoke passing", "blocked on X"). One source of truth: edit sections in place, don't append duplicates.
 
@@ -348,7 +348,10 @@ order.
 7. **Small-product camera check, report only.** Verify macro-range focal lengths, close focus distance
    and shallow depth of field in the clay and depth passes. Then test whether a character's hand
    holding the lipstick-size tube reads clearly at close range. Report with renders. Do not fix in
-   this pass.
+   this pass. **Delivered 2026-09-24**, see "Item 7 report" above. Near clip is fine; six findings
+   recorded, nothing fixed. The two that bite the pilot are a one-metre minimum depth span that
+   costs a small product 11.5x of its depth range, and height-only shot framing that overflows any
+   product wider than it is tall.
 
 **Cut** (owner decision, 2026-09-22): fidelity spike, image-to-3D, clay override on imported models,
 unit-aware GLB scaling, soft-body cube proxies. **Deferred:** lineart pass, product-mask pass, Shopify
@@ -437,6 +440,132 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 - Written output: no em dashes, no filler, active voice.
 - Don't run a named Claude skill without asking first.
 
+## Item 7 report: small-product camera check (2026-09-24)
+
+Report only, per the build plan: nothing below is fixed. Every number was measured, either
+from `src/engine/camera.ts`'s own `frameSubject`/`verticalFov` or from decoded render pixels.
+Renders in `docs/aw/renders/item7/`.
+
+Test subjects: the `generic.lipstick-tube` preset (3.4in tall, 0.78in diameter, the small end
+of the range) and `generic.cosmetic-compact` (3in wide, 0.7in tall), against
+`biaggi.runway-carry-on` (22in) as the large end.
+
+### What works
+
+**Near clip has ample headroom.** Item 3's scale-aware near plane
+(`SceneManager.applyScaleContext`, `clamp(ref * 0.02, 0.001, 0.05)`) gives a 3.4in tube a
+0.0017 m near plane against a 0.139 m close-up distance: roughly 80x margin. I found no
+lens/shot-size combination in the catalog where a small product clips. This was the risk the
+item was written to check, and it is not a problem.
+
+**Scale reads correctly across the whole range.** A 22in carry-on and a 3.4in tube in one
+frame are proportioned correctly (`08-scale-bag-and-lipstick`).
+
+**Framing a whole small product is fine on a long lens.** The tube fills frame properly at
+100mm from 0.754 m (`01-lipstick-full-100mm`).
+
+### Finding 1: there is no depth of field, at any scale
+
+`dofBlurAmount` (`camera.ts:139`) has **no caller** anywhere in `src/`; the only reference is
+its own unit test. `focusDistance` is carried on `CameraMark`, interpolated by the evaluator
+(`evaluate.ts:394-430`), pulled to a tracked subject (`evaluate.ts:457-472`), written into
+`metadata.json` (`exporter.ts:286`) and editable in the Inspector — and **never reaches the
+renderer**. The item asked to verify shallow depth of field in the clay and depth passes;
+there is none to verify. Everything renders at infinite depth of field.
+
+### Finding 2: focus distance cannot be set to where a small-product camera actually stands
+
+The Inspector clamps focus distance to 0.3-100 m (`Inspector.tsx:1962`). Every close-up
+distance for a 3.4in tube falls below that floor:
+
+| Shot size | 35mm | 50mm | 85mm | 100mm | 135mm |
+|---|---|---|---|---|---|
+| Full shot | 0.264 | 0.377 | 0.641 | 0.754 | 1.018 |
+| MCU | 0.079 | 0.113 | 0.192 | 0.226 | 0.305 |
+| CU | 0.049 | 0.069 | 0.118 | 0.139 | 0.187 |
+| ECU | 0.020 | 0.029 | 0.050 | 0.058 | 0.079 |
+
+Metres, super35, 2:1. Only two cells in the whole table clear 0.3 m. So for any close-up of a
+small product the focus distance recorded in `metadata.json` is necessarily wrong — it cannot
+be set to the truth. Harmless while nothing renders focus (finding 1); wrong in the package
+that a downstream operator reads.
+
+### Finding 3: the depth pass gives a small product about 2% of its range
+
+Measured off decoded depth frames, sampling a column through the subject:
+
+| Subject | Depth extent | Distinct levels (of 256) |
+|---|---|---|
+| Lipstick tube 3.4in | ~0.02 m | **6** (248-253) |
+| Runway carry-on 22in | ~0.20 m | **17** (223-242) |
+
+A depth map that resolves a product into 6 levels is a flat white blob to any downstream
+depth conditioning. See `contact-depth.png`, top half.
+
+**Root cause, confirmed by probe.** `SceneManager.ts:2723` sets
+`uFar = Math.max(range.far, range.near + 1)`, forcing a minimum one-metre depth span. Any
+product shallower than a metre — which is every product this tool exists for — gets a
+proportionally tiny slice. I temporarily replaced the `+ 1` floor with `+ 0.001`, rebuilt, and
+re-exported the same shot: **the tube went from 6 levels to 69**, an 11.5x improvement
+(`contact-depth.png`, bottom half). The change was then reverted and the working tree verified
+clean; nothing in this branch touches it.
+
+**Secondary cause.** `measureDepthRange` walks `this.visuals` only, so the ground mesh added
+at `SceneManager.ts:273-280` is rendered into the depth pass but excluded from the range it is
+normalized against.
+
+### Finding 4: shot-size framing solves for height only, so flat products overflow
+
+`frameSubject` (`camera.ts`) takes `subjectHeight` and nothing else about the subject's shape.
+For the compact — 3in wide, 0.7in tall — a full shot solves on the 0.7in height and puts the
+camera at 0.155 m, where the frame is 38.7 mm wide. The compact is 76.2 mm wide, so it
+overflows to about twice the frame. `04-compact-framed-by-height` is the result: the frame is
+entirely filled by the product's surface, with no product visible as an object.
+
+Framed on its width instead (0.666 m) it reads correctly (`05-compact-framed-by-width`). This
+is not specific to cosmetics: a packing cube lying flat, a laptop, a tray all hit it. The
+framing path assumes subjects are taller than they are wide, which is true of people and false
+of most products.
+
+### Finding 5: nothing can be held in a hand
+
+This was the item's second question, and the answer is no.
+
+Marriage (`resolveMarriages`, `evaluate.ts`) attaches a child to its parent's **root position
+and heading** at a fixed local offset. The character rig does have joints
+(`builders.ts:169-283`: `shoulderL/R`, `elbowL/R`, torso, head) and marks can key them, but
+**no attachment anchors to a joint**. A married product therefore rides the body and ignores
+the arms entirely.
+
+`06-hand-medium-50mm` shows the consequence: the tube floats beside the torso, arms hanging at
+their sides, nothing holding it. At medium-shot framing it is roughly 6 pixels wide against a
+1.7 m figure, so it carries no useful silhouette for an image model either. A held small
+product is not stageable today. The options, in rough cost order, are a joint-anchored
+attachment point (`attachedToJoint`), a posed "holding" motion preset plus manual placement, or
+accepting that held-product shots come from reference photography rather than this tool.
+
+### Finding 6: the lens set stops short of macro, which matters only for the record
+
+`LENS_SET` is 12-135mm with no macro entry. Framing a 3.4in product is a distance problem
+rather than a focal-length problem, and the distances above are all achievable in the render.
+But a real 100mm macro focuses to roughly 0.3 m, and the CU distance this app computes for the
+tube is 0.139 m — closer than the lens it names could focus. Since focus is not simulated the
+pixels are unaffected; the lens/distance pair written into `metadata.json` is simply not
+physically realisable.
+
+### Suggested order if any of this gets fixed
+
+Not proposed as scope, only ranked by cost against benefit to the pilot:
+
+1. The one-metre depth floor (finding 3). One line, 11.5x measured improvement, and depth is a
+   primary conditioning input for image models.
+2. Width-aware framing (finding 4). Contained to `frameSubject` and its callers, and it
+   silently ruins any flat-product shot today.
+3. Joint-anchored attachment (finding 5). Genuinely new work; only worth it if held-product
+   shots are on the list.
+4. Focus clamp and DOF (findings 1, 2). Cheap to widen the clamp; rendering real DOF is a new
+   render path and buys nothing while appearance comes from reference images.
+
 ## Answered questions (2026-09-23, Stephane)
 1. **Email spec:** emails are 600px wide. Heroes are up to 500px tall. Design at 2x for retina (up to 1200x1000). Aspect presets should be built around 600 wide and heights up to 500 (for example 600x500, 600x400, 600x300, 600x250), plus the social ratios already listed. No standard headline placement: it varies per email, so the safe-zone presets (left, right, top, bottom, custom) must all stay available and be chosen per shot.
 2. **Models:** no fixed models. AW uses whichever model does the job best. Generator profiles must stay easy to add and swap; don't hard-wire one model.
@@ -467,3 +596,4 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 | 2026-09-24 | Item 5 shipped, verified | Arbitrary export resolution plus the three added ratios. `AspectId` gains 2:1 and 3:2 (email heroes) and 4:5 (portrait social); `ExportResolution` gains `{ widthPx }` for an exact pixel width, so the 1200x600 the audit called unreachable now renders at exactly 1200x600. Height derives from the shot aspect rather than being typed separately: the viewport mask, the camera crop-to-aspect FOV and the exported pixels all read `shot.aspect`, so free width-and-height would hand back a frame that is not what was composed. A size no ratio covers is reached by adding the ratio. Width clamped to 64-8192 because past the driver's max renderbuffer the canvas yields a blank frame with no error. Collapsed the three duplicated aspect lists (`Viewport.tsx`, `Inspector.tsx`, MCP handler) into one `ASPECT_IDS` + `isAspectId` in the engine — the handler's copy could reject an aspect the UI already offered, which is exactly the drift the audit flagged. Closed a latent bug while there: aspect was never validated on load, so a hand-edited file put an unknown key into `ASPECT_RATIOS` and sent NaN through the camera, the export dims and the top-down diagram; it now degrades to 16:9. `metadata.json` now records resolution and rendered width/height, closing half the gap the audit noted. Image profiles offer the new ratios; video profiles deliberately do not, since the package tells a downstream operator what the model accepts. 17 new unit tests (983/983 total) plus `tests/e2e/aw-aspects.spec.ts`, which decodes exported PNGs with ffprobe rather than trusting the requested numbers and checks each ratio actually reframes the camera. typecheck, lint, 90/91 e2e (only `perf.spec.ts`, which needs a GPU), `BLOCKOUT_SOFTWARE_GL=1 npm run smoke` 6/6 including byte-determinism. Branch `aw/aspects-resolution`. |
 | 2026-09-24 | Item 6 shipped, verified | Headline safe-zone overlay. New pure engine module `src/engine/safe-zone.ts`; `Shot` gains an optional `safeZone`. Four presets (left third, right third, top band, bottom band) plus a custom rect, which is how the pilot's "headline left 40%" is reached — a preset per percentage would be a list nobody can read. The rect is normalized frame space, not pixels, so the share of the picture survives a change of aspect or export width, and it lives on the shot as data so `state(t)` stays pure. Five consumers off one value: viewport overlay, Inspector control, `engine/prompt.ts`, `metadata.json`, and the MCP `set_shot`/`get_state`. Negative space is computed by projecting subject bounds through a pure reimplementation of the shot camera. Two decisions worth recording. Environment kits are excluded from the measurement: a terminal spans the frame by design, so counting it would make every zone read 0% clear and the number would tell a designer nothing. And the overlay draws the subject boxes it measured, so the percentage is checkable by eye rather than taken on trust. `metadata.json` carries the rect, the first-frame figure, the worst figure across the shot with its timestamp and the intruders, and `measuredFrom` so a downstream operator knows it is a bounds measurement. One real bug found by the e2e: the engine sized subjects from the catalog `height`, which describes a subject and not what is attached to it — `prop.suitcase` declares 0.7 m and builds a pull handle above it, so the box stopped below the top of the mesh and called a strip of frame clear that had a handle in it. Fixed by having the renderer measure real world boxes off the scene graph (`SceneManager.entityWorldBounds`) and hand them to the engine, which keeps the maths pure and the answer exact; the catalog box stays as the fallback for callers with no scene graph. Two of my own test mistakes, corrected rather than worked around: diffing against an empty scene moved the background too, because scene-derived scale follows the entity extent, so the subject is now hidden with `excludeFromExport` and the document stays identical across both renders; and a subject's cast shadow is in the pixels but not in the box, which no magnitude threshold separates (clay on grey ground differs by only 10-19 levels, the same band as the shadow), so the pose coverage moved to a direct comparison against three.js's own projection — under 1e-4 drift across 6 poses and all 8 aspects — with the pixel diff kept as the reality anchor on a clean case. Confirmed the projection test fails when the Euler order is changed to XYZ. 55 new unit tests (1035/1035 total) plus `tests/e2e/aw-safe-zone.spec.ts` 9/9. typecheck, lint, 100/101 e2e (only `perf.spec.ts`, which needs a GPU), smoke 6/6 including byte-determinism. Branch `aw/safe-zone`. |
 | 2026-09-24 | Email spec folded into item 5 | Stephane's confirmed email spec (600 wide, heroes to 500 tall, 2x) landed on `main` after item 5 was scoped. Two of the four named hero sizes were already covered (600x400 is 3:2, 600x300 is 2:1); added `6:5` (600x500) and `12:5` (600x250) so all four are one preset away. 12:5 is not interchangeable with 2.39:1: the cinema ratio gives 600x252 and misses the spec by 2px, which a test now pins. All four image profiles carry the full set; video profiles still deliberately do not. 5 new unit tests (987/987 total) and a new e2e case decoding all four at 2x. Also merged `main` up the whole stack, resolving `docs/HANDOFF.md` each time: my rewritten 7-item build plan is kept over the superseded 10-item list, status-log rows unioned in date order, and Stephane's `scripts/aw-verify.mjs` plus his Answered questions carried through. Branch `aw/aspects-resolution`. |
+| 2026-09-24 | Item 7 delivered, report only | Small-product camera check. Nothing fixed, per the item. Good news first: item 3's scale-aware near plane has ~80x headroom for a 3.4in tube (0.0017m near against a 0.139m close-up), and no lens/shot-size pair in the catalog clips a small product, which was the risk the item existed to check. Six findings. (1) There is no depth of field at all: `dofBlurAmount` has no caller outside its own unit test, and `focusDistance` is evaluated, interpolated, exported to metadata and editable but never reaches the renderer. (2) The Inspector clamps focus to 0.3m minimum, and every close-up distance for a 3.4in product is below it, so the focus distance in `metadata.json` cannot be set to the truth. (3) The depth pass resolves the lipstick into 6 distinct levels of 256 and the carry-on into 17; root cause confirmed by probe as the `uFar = max(range.far, range.near + 1)` one-metre floor at `SceneManager.ts:2723`, since replacing the floor took the tube from 6 levels to 69, an 11.5x change, after which the probe was reverted and the tree verified clean. A secondary cause is `measureDepthRange` walking only `this.visuals`, so the ground mesh is rendered into the depth pass but excluded from the range it normalizes against. (4) `frameSubject` solves for height alone, so a 3in-wide 0.7in-tall compact is framed at 0.155m where the frame is 38.7mm wide and the 76.2mm product overflows to about 2x; this hits any flat product, not just cosmetics. (5) Nothing can be held in a hand: marriage attaches to the parent's root position and heading, and although the rig has shoulder and elbow joints, no attachment anchors to one, so a married tube floats beside the torso with the arms at their sides and is ~6px wide at medium framing. (6) The lens set stops at 135mm and the CU distance it computes for the tube (0.139m) is closer than a real 100mm macro focuses, which affects the metadata rather than the pixels. Renders in `docs/aw/renders/item7/`. Branch `aw/small-product-check`. |
