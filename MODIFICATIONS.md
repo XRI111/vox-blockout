@@ -42,6 +42,12 @@ AlchemyWorx internal fork changes (2026), by **AlchemyWorx**:
   dispatch branch), `Library.tsx`, `Inspector.tsx`, `store.ts`,
   `SceneManager.ts` (scale-aware grid, gizmo snap and camera near planes),
   `src/main/index.ts` and `src/preload/index.ts` (one IPC each).
+- Staging props and sets for product stills (`src/engine/assets.ts`,
+  `src/renderer/viewport/builders.ts`): a security tray, a standalone overhead
+  bin, a vanity counter and an extruded seamless studio sweep. `buildProp` and
+  `buildEnv` now take the entity's `params`, and `env.planeCabin` accepts
+  `params.bins = 'open'` to lift its bin doors; the bin geometry itself is
+  shared between the kit and the standalone prop rather than duplicated.
 - AW build documentation under `docs/HANDOFF.md`.
 
 Downstream distributors should append their own branding and behavioral changes

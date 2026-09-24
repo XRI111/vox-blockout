@@ -641,6 +641,11 @@ const THUMBS: Record<string, string> = {
 }
 
 function thumbFor(id: string): string {
+  // AW fork: staging props for product stills.
+  if (id === 'prop.securityTray') return '🧺'
+  if (id === 'prop.overheadBin') return '🧳'
+  if (id === 'prop.vanityCounter') return '🪞'
+  if (id === 'prop.seamlessSweep') return '🎞️'
   // AW fork: product presets are data, so they get a thumb by category
   // rather than a hardcoded per-id entry.
   if (id.startsWith('product.')) {

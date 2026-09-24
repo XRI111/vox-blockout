@@ -1633,7 +1633,7 @@ function emissive(geo: THREE.BufferGeometry, color: number, opacity = 1): THREE.
   return m
 }
 
-function buildProp(assetId: string): BuiltAsset {
+function buildProp(assetId: string, params?: Record<string, number | string>): BuiltAsset {
   const group = new THREE.Group()
   group.name = assetId
   let height = 0.3
@@ -3243,6 +3243,71 @@ function buildProp(assetId: string): BuiltAsset {
       group.add(tank)
       break
     }
+    // -----------------------------------------------------------------------
+    // AW fork: staging props for product stills. See docs/HANDOFF.md Phase 1
+    // item 4. Real-world sizes; fidelity is not the goal, scale is.
+    // -----------------------------------------------------------------------
+
+    case 'prop.securityTray': {
+      // US checkpoint bins run about 26" x 16.5" x 4". At that size a 22"
+      // carry-on plainly will not fit in one, which is the point of the shot.
+      height = 0.1
+      const w = 0.66
+      const d = 0.42
+      const t = 0.015
+      const floor = box(w, t, d, 0x5a6472)
+      floor.position.y = t / 2
+      group.add(floor)
+      // Walls splay outward slightly, the way stacking bins are moulded.
+      for (const [sx, sz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
+        const along = sx !== 0 ? d : w
+        const wall = box(sx !== 0 ? t : along, height, sx !== 0 ? along : t, 0x66707e)
+        wall.position.set(sx * (w / 2 - t / 2), height / 2, sz * (d / 2 - t / 2))
+        wall.rotation.z = sx * -0.06
+        wall.rotation.x = sz * 0.06
+        group.add(wall)
+      }
+      break
+    }
+
+    case 'prop.overheadBin': {
+      // A single bin on its own, for the close shot. Opens by default: a shut
+      // bin placed deliberately is rare, and the cabin kit already has those.
+      height = 0.45
+      const open = params?.state !== 'closed'
+      overheadBin(group, 0, 0.22, 0, 1.2, open, 0.6, 0.4, 1)
+      break
+    }
+
+    case 'prop.vanityCounter': {
+      // Bathroom vanity at 0.86 m, the usual counter height, with a mirror
+      // above. The surface is deliberately clear: it is a place to stand
+      // cosmetics, not a dressed set.
+      const counterH = 0.86
+      const topW = 1.2
+      const topD = 0.55
+      height = 1.71
+      const cabinet = box(topW - 0.04, counterH - 0.04, topD - 0.04, 0x6a6a74)
+      cabinet.position.y = (counterH - 0.04) / 2
+      group.add(cabinet)
+      const top = box(topW, 0.04, topD, 0xb4b4bc)
+      top.position.y = counterH - 0.02
+      group.add(top)
+      const splash = box(topW, 0.1, 0.02, 0xb4b4bc)
+      splash.position.set(0, counterH + 0.05, topD / 2 - 0.01)
+      group.add(splash)
+      const mirror = box(0.9, 0.75, 0.02, 0xc8d2dc)
+      mirror.position.set(0, counterH + 0.42, topD / 2 - 0.01)
+      group.add(mirror)
+      break
+    }
+
+    case 'prop.seamlessSweep': {
+      height = 1.0
+      group.add(seamlessSweep(1.2, 0.9, 1.0, 0.35))
+      break
+    }
+
     default: {
       const spec = assetSpec(assetId)
       height = spec.height
@@ -3254,6 +3319,49 @@ function buildProp(assetId: string): BuiltAsset {
 
   const setTint = makeSetTint(group)
   return { group, height, animate, setTint }
+}
+
+/**
+ * AW fork: a studio seamless sweep — a flat run that curves up into a vertical
+ * wall with no visible seam, which is how product stills get a background that
+ * falls off to nothing. Extruded from a side profile so the curve is one
+ * surface rather than a stack of boxes.
+ *
+ * The wall stands at z=0 and the flat run extends forward to -Z, matching the
+ * forward-is-minus-Z convention, so a product dropped in front of it is
+ * already on the sweep.
+ */
+function seamlessSweep(width: number, depth: number, rise: number, radius: number): THREE.Mesh {
+  const t = 0.02
+  const r = Math.min(radius, depth * 0.9, rise * 0.9)
+  // Profile in 2D: u runs from the wall (0) forward to the lip (depth).
+  const shape = new THREE.Shape()
+  shape.moveTo(0, rise)
+  shape.lineTo(0, r)
+  shape.absarc(r, r, r, Math.PI, Math.PI * 1.5, false)
+  shape.lineTo(depth, 0)
+  shape.lineTo(depth, t)
+  shape.lineTo(r, t)
+  shape.absarc(r, r, r - t, Math.PI * 1.5, Math.PI, true)
+  shape.lineTo(t, rise)
+  shape.closePath()
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: width,
+    bevelEnabled: false,
+    curveSegments: 8
+  })
+  // Extrusion runs along the geometry's Z; rotating maps it to world X and
+  // sends the profile's u axis to -Z, putting the flat run in front.
+  geo.rotateY(Math.PI / 2)
+  // The extrusion lands on world X in [0, width]; recentre it on the origin so
+  // a product placed at x=0 is in the middle of the sweep.
+  geo.translate(-width / 2, 0, 0)
+  const m = new THREE.Mesh(geo, mat(0xd2d2d8))
+  m.castShadow = true
+  m.receiveShadow = true
+  ;(m.userData as TintUserData).origColor = 0xd2d2d8
+  return m
 }
 
 // ---------------------------------------------------------------------------
@@ -3270,7 +3378,7 @@ interface EnvResult {
   animate?: (input: AnimInput) => void
 }
 
-function buildEnv(assetId: string): BuiltAsset {
+function buildEnv(assetId: string, params?: Record<string, number | string>): BuiltAsset {
   const group = new THREE.Group()
   group.name = assetId
   const spec = assetSpec(assetId)
@@ -3305,7 +3413,7 @@ function buildEnv(assetId: string): BuiltAsset {
       res = envBusInterior(group)
       break
     case 'env.planeCabin':
-      res = envPlaneCabin(group)
+      res = envPlaneCabin(group, params)
       break
     case 'env.field':
       res = envField(group)
@@ -3801,8 +3909,61 @@ function envBusInterior(group: THREE.Group): EnvResult {
   return { group, height: 2.2 }
 }
 
-function envPlaneCabin(group: THREE.Group): EnvResult {
+/**
+ * AW fork: one overhead bin, shared by `env.planeCabin` and the standalone
+ * `prop.overheadBin`. Shelf-style: a box closed on the outboard side with a
+ * door hinged along its top INBOARD edge, so an open bin shows the cavity from
+ * the aisle, which is where the camera and the passenger both are.
+ *
+ * `side` is -1 for a port bin and +1 for starboard. `length` runs along Z.
+ */
+function overheadBin(
+  parent: THREE.Group,
+  x: number,
+  y: number,
+  z: number,
+  length: number,
+  open: boolean,
+  depth = 0.6,
+  height = 0.4,
+  side: -1 | 1 = 1
+): void {
+  const t = 0.03
+  const bin = grp(x, y, z)
+  parent.add(bin)
+
+  // Shell: floor, ceiling and the OUTBOARD back wall, against the fuselage.
+  // The inboard face is left open because that is where the door is.
+  const floor = box(depth, t, length, 0x7e7e88)
+  floor.position.y = -height / 2
+  bin.add(floor)
+  const roof = box(depth, t, length, 0x8a8a92)
+  roof.position.y = height / 2
+  bin.add(roof)
+  const back = box(t, height, length, 0x8a8a92)
+  back.position.x = side * (depth / 2)
+  bin.add(back)
+  for (const endZ of [-length / 2, length / 2]) {
+    const end = box(depth, height, t, 0x82828c)
+    end.position.z = endZ
+    bin.add(end)
+  }
+
+  // Door, hinged along the top inboard edge. Closed it hangs flush over the
+  // opening; open it lifts 75 degrees into the aisle, clearing the cavity
+  // without swinging into the fuselage.
+  const hinge = grp(-side * (depth / 2), height / 2, 0)
+  hinge.rotation.z = open ? -side * 1.31 : 0
+  bin.add(hinge)
+  const door = box(t, height, length, 0x9c9ca6)
+  door.position.y = -height / 2
+  hinge.add(door)
+}
+
+function envPlaneCabin(group: THREE.Group, params?: Record<string, number | string>): EnvResult {
   // Floor + 6 rows × (2+2) seats with aisle + curved side hints + overhead bins. No roof.
+  // AW fork: `params.bins = 'open'` lifts the bin doors for the carry-on shot.
+  const binsOpen = params?.bins === 'open'
   const floor = box(3.2, 0.05, 12, 0x60606a)
   floor.position.y = 0.02
   floor.receiveShadow = true
@@ -3827,9 +3988,7 @@ function envPlaneCabin(group: THREE.Group): EnvResult {
     sideWall.rotation.z = side * 0.25
     group.add(sideWall)
     // Overhead bins.
-    const bin = box(0.6, 0.4, 11, 0x8a8a92)
-    bin.position.set(side * 1.3, 2.0, 0)
-    group.add(bin)
+    overheadBin(group, side * 1.3, 2.0, 0, 11, binsOpen, 0.6, 0.4, side as -1 | 1)
   }
   return { group, height: 2.2 }
 }
@@ -6144,8 +6303,8 @@ export function buildAsset(assetId: string, params?: Record<string, number | str
     }
   }
   if (assetId.startsWith('furniture.')) return buildFurniture(assetId)
-  if (assetId.startsWith('prop.')) return buildProp(assetId)
-  if (assetId.startsWith('env.')) return buildEnv(assetId)
+  if (assetId.startsWith('prop.')) return buildProp(assetId, params)
+  if (assetId.startsWith('env.')) return buildEnv(assetId, params)
   if (assetId.startsWith('prim.')) return buildPrimitive(assetId)
   return buildFallback(assetId)
 }
