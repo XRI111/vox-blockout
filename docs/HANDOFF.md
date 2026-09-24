@@ -61,7 +61,7 @@ Every new timeline/scene behavior goes through the engine pattern. Add Vitest co
 4. **Stills export package** per camera mark or current frame, arbitrary resolution:
    `clay.png`, `depth.png`, `normal.png`, `lineart.png`, `product_mask.png`, `headline_safezone_mask.png`, `prompt.txt` (per target model), `metadata.json` (lens, sensor, camera pose, product placement, safe-zone rect).
 5. **Headline safe-zone overlay.** Viewport overlay + exported mask. Presets: left third, right third, top band, bottom band, custom rect. Show negative-space percentage. Prompt generator writes it into the prompt (e.g. "clean, uncluttered background across the left 40% of frame for headline copy").
-6. **Aspect presets** (ASSUMPTION, confirm AW's email spec with Stephane): 2:1 (1200x600), 3:2 (1200x800), 1:1 (1080x1080), 4:5 (1080x1350), 9:16 (1080x1920). Extend the existing aspect-mask system.
+6. **Aspect presets** (email spec confirmed: 600px wide, heroes up to 500px tall; export at 2x): 600x500, 600x400, 600x300, 600x250 (and 2x versions), plus 1:1 (1080x1080), 4:5 (1080x1350), 9:16 (1080x1920) for social. Extend the existing aspect-mask system.
 7. **Image-model generator profiles.** Add profiles for whatever models AW uses (open question). Each defines input slots (structure/depth reference, product reference images, style reference), max resolution, prompt template.
 8. **Product photography sets and lighting.** Seamless sweep/infinity cove, tabletop, soft top light, window light, hard sun. Extend the existing 9 presets; don't duplicate.
 9. **Travel lifestyle kits**, only those missing after the audit: airport terminal, security checkpoint with bins, aircraft cabin with overhead bins, hotel room with luggage rack, car trunk, curbside drop-off.
@@ -127,15 +127,20 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 - Written output: no em dashes, no filler, active voice.
 - Don't run a named Claude skill without asking first.
 
+## Answered questions (2026-09-23, Stephane)
+1. **Email spec:** emails are 600px wide. Heroes are up to 500px tall. Design at 2x for retina (up to 1200x1000). Aspect presets should be built around 600 wide and heights up to 500 (for example 600x500, 600x400, 600x300, 600x250), plus the social ratios already listed. No standard headline placement: it varies per email, so the safe-zone presets (left, right, top, bottom, custom) must all stay available and be chosen per shot.
+2. **Models:** no fixed models. AW uses whichever model does the job best. Generator profiles must stay easy to add and swap; don't hard-wire one model.
+3. **Biaggi CAD/3D:** none available now. Use the next options in the 3D source order: image-to-3D, phone scan, or the parametric proxy. The parametric proxy is the default path.
+4. **Hero color:** not chosen yet. Build the proxy with color as a swappable option (Black, Navy Blue, Grey, Pink).
+5. **Pilot:** Stephane.
+6. **App name:** ALXStudio. Rename not yet applied to the app. Apply per the attribution rules (keep `NOTICE`, credit Sam Wasserman).
+
 ## Open questions (for Stephane)
-1. AW's standard email hero dimensions and headline placement conventions?
-2. Which image and video models does AW use in production?
-3. Does Biaggi have CAD/3D files or high-res product photography beyond the website?
-4. Approve or replace the draft shot list? Which Runway color is the hero?
-5. Who on the AW team pilots the tool?
-6. Final internal app name?
+1. Approve or replace the draft shot list?
 
 ## Status log
 | Date | Status | Notes |
 |---|---|---|
 | 2026-09-21 | Forked | Fork created by Stephane. Handoff added. Nothing built or baselined. |
+| 2026-09-23 | Baseline passing | Added `scripts/aw-verify.mjs` (run `node scripts/aw-verify.mjs`). On macOS Darwin 24.6.0, Node 22.23.1: typecheck, lint, unit tests, smoke, and app launch passed. Manual UI test by Stephane pending. |
+| 2026-09-23 | Decisions recorded | Email spec, model policy, no Biaggi CAD, pilot owner, and app name (ALXStudio) recorded under Answered questions. Rename not yet applied. |
