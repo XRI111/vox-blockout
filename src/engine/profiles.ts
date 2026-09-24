@@ -117,7 +117,7 @@ export const BUILTIN_PROFILES: GeneratorProfile[] = [
     // AW fork: image models take any framing, so they get the email-hero
     // and social ratios too. Video profiles deliberately do not — the
     // package would otherwise advertise a framing the model rejects.
-    aspects: ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16'],
+    aspects: ['12:5', '2.39:1', '2:1', '16:9', '3:2', '4:3', '6:5', '1:1', '4:5', '9:16'],
     exportWidth: 1536,
     fps: 24,
     refModes: ['stills'],
@@ -133,7 +133,7 @@ export const BUILTIN_PROFILES: GeneratorProfile[] = [
     // AW fork: image models take any framing, so they get the email-hero
     // and social ratios too. Video profiles deliberately do not — the
     // package would otherwise advertise a framing the model rejects.
-    aspects: ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16'],
+    aspects: ['12:5', '2.39:1', '2:1', '16:9', '3:2', '4:3', '6:5', '1:1', '4:5', '9:16'],
     exportWidth: 1536,
     fps: 24,
     refModes: ['stills'],
@@ -148,7 +148,7 @@ export const BUILTIN_PROFILES: GeneratorProfile[] = [
     // AW fork: image models take any framing, so they get the email-hero
     // and social ratios too. Video profiles deliberately do not — the
     // package would otherwise advertise a framing the model rejects.
-    aspects: ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16'],
+    aspects: ['12:5', '2.39:1', '2:1', '16:9', '3:2', '4:3', '6:5', '1:1', '4:5', '9:16'],
     exportWidth: 1536,
     fps: 24,
     refModes: ['stills'],
@@ -163,7 +163,7 @@ export const BUILTIN_PROFILES: GeneratorProfile[] = [
     // AW fork: image models take any framing, so they get the email-hero
     // and social ratios too. Video profiles deliberately do not — the
     // package would otherwise advertise a framing the model rejects.
-    aspects: ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16'],
+    aspects: ['12:5', '2.39:1', '2:1', '16:9', '3:2', '4:3', '6:5', '1:1', '4:5', '9:16'],
     exportWidth: 1536,
     fps: 24,
     refModes: ['stills'],
