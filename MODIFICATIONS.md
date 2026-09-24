@@ -90,6 +90,27 @@ AlchemyWorx internal fork changes (2026), by **AlchemyWorx**:
   rendered width and height. Image generator profiles offer the new ratios;
   video profiles deliberately do not, since the package advertises what the
   model accepts.
+- Headline safe zones (`src/engine/safe-zone.ts` new; `src/engine/types.ts`,
+  `src/engine/schema.ts`, `src/engine/prompt.ts`,
+  `src/renderer/viewport/Viewport.tsx`, `src/renderer/viewport/SceneManager.ts`,
+  `src/renderer/panels/Inspector.tsx`, `src/renderer/export/exporter.ts`,
+  `src/renderer/control/handler.ts`, `mcp/blockout-mcp.mjs`). `Shot` gains an
+  optional `safeZone`: a normalized frame-space rect, four named presets plus a
+  custom rect, reserving the region a headline will occupy. Normalized rather
+  than pixels so the share of the picture survives a change of aspect or export
+  width. The rect lives on the shot as data, so `state(t)` stays pure and one
+  value drives the viewport overlay, `prompt.txt` and `metadata.json`.
+  Occupancy is measured by projecting subject bounds into frame space with a
+  pure reimplementation of the shot camera, which an e2e checks against
+  three.js's own projection across camera poses and every aspect. The renderer
+  supplies measured world boxes off the live scene graph where it can: the
+  catalog's `height` describes a subject and not what is attached to it, so a
+  suitcase declaring 0.7 m builds a pull handle above that, and a catalog-sized
+  box would call a strip of frame clear that has a handle in it. Environment
+  kits are excluded from the measurement, since a kit spans the frame by design
+  and counting it would make every zone read 0% clear. `schema.ts` normalizes an
+  unusable zone to absent, and now covers draft shots in the same pass as the
+  aspect validation added earlier, which had only walked `scene.shots`.
 - AW build documentation under `docs/HANDOFF.md`.
 
 Downstream distributors should append their own branding and behavioral changes

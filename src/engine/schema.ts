@@ -21,6 +21,7 @@ import type {
 } from './types'
 import { normalizeStretch } from './transform'
 import { isAspectId } from './camera'
+import { normalizeSafeZone } from './safe-zone'
 import { normalizeProjectRelativePath } from '../shared/portable-paths'
 
 export const SCHEMA_VERSION = 1 as const
@@ -275,8 +276,14 @@ function migrateProject(doc: ProjectDoc): ProjectDoc {
     // forward-versioned file put an unknown string into ASPECT_RATIOS and got
     // NaN through the camera, the export dims and the top-down diagram with
     // nothing reporting it. Degrade to 16:9 rather than reject the project.
-    for (const shot of scene.shots) {
+    // AW fork: the safe zone is additive. Normalize junk to "no zone" rather
+    // than rejecting the project, and drop the key entirely when there is
+    // nothing to say so a pre-fork document round-trips byte-identically.
+    for (const shot of [...scene.shots, ...(scene.drafts ?? [])]) {
       if (!isAspectId(shot.aspect)) shot.aspect = '16:9'
+      const zone = normalizeSafeZone(shot.safeZone)
+      if (zone) shot.safeZone = zone
+      else delete shot.safeZone
     }
     const raw = (scene as { scans?: unknown }).scans
     if (!Array.isArray(raw)) {

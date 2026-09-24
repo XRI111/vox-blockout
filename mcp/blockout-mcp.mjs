@@ -164,7 +164,16 @@ const TOOLS = [
           description:
             'Aspect ratio: "12:5", "2.39:1", "2:1", "16:9", "3:2", "4:3", "6:5", "1:1", "4:5" or "9:16". AW email heroes at 600 wide: 6:5 is 600x500, 3:2 is 600x400, 2:1 is 600x300, 12:5 is 600x250.'
         },
-        fps: { type: 'number', description: 'Frames per second.' }
+        fps: { type: 'number', description: 'Frames per second.' },
+        safeZone: {
+          type: 'string',
+          description:
+            'Region kept clear for headline copy: "off", "leftThird", "rightThird", "topBand", "bottomBand", or "custom" with zoneX/zoneY/zoneW/zoneH. Written into prompt.txt and metadata.json.'
+        },
+        zoneX: { type: 'number', description: 'Custom zone left edge, percent of frame width.' },
+        zoneY: { type: 'number', description: 'Custom zone top edge, percent of frame height.' },
+        zoneW: { type: 'number', description: 'Custom zone width, percent of frame width.' },
+        zoneH: { type: 'number', description: 'Custom zone height, percent of frame height.' }
       },
       additionalProperties: false
     }

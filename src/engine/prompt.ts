@@ -1,3 +1,4 @@
+// Modified for the AlchemyWorx internal fork (2026); see MODIFICATIONS.md.
 /**
  * Prompt generation, v5: a SHORT, paste-ready prompt. The reference video
  * carries all the choreography — the prompt's job is only to say "use this
@@ -9,6 +10,7 @@
  */
 
 import { assetSpec } from './assets'
+import { safeZonePhrase } from './safe-zone'
 import type { GeneratorProfile } from './profiles'
 import type { LightingPresetId, Scene, Shot } from './types'
 
@@ -57,6 +59,12 @@ export function generatePrompt(scene: Scene, shot: Shot, profile: GeneratorProfi
     const envWords = [...new Set(envEntities.map((e) => assetSpec(e.assetId).promptNoun))]
     lines.push(`Setting: ${envWords.join(', ')}.`)
   }
+
+  // AW fork: the headline zone, before the adherence clause, so the region to
+  // keep clean reads as part of the brief rather than as a trailing note. Only
+  // present when the shot actually reserves one.
+  const zone = safeZonePhrase(shot.safeZone)
+  if (zone) lines.push(zone)
 
   // The core instruction. Video-reference generators get the simple
   // motion-reference directive; image-only profiles keep their own clause.

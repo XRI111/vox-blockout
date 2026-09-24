@@ -11,6 +11,12 @@ import { ASPECT_RATIOS } from '@engine/camera'
 import { generatePrompt } from '@engine/prompt'
 import { getProfile, BUILTIN_PROFILES, type GeneratorProfile } from '@engine/profiles'
 import { ShotEvaluator } from '@engine/evaluate'
+import {
+  analyzeSafeZone,
+  resolveSafeZone,
+  safeZonePhrase,
+  worstSafeZone
+} from '@engine/safe-zone'
 import type { ProjectDoc, Scene, Shot } from '@engine/types'
 import { useStore } from '../store'
 import { getSceneManager, type SceneManager } from './scene-access'
@@ -190,6 +196,51 @@ async function renderPassToMp4(
   return { ok: true }
 }
 
+/**
+ * The safe-zone block for `metadata.json`, or null when the shot reserves
+ * nothing.
+ *
+ * Two figures, because one is not enough: `negativeSpace` at the first frame is
+ * what a still delivers, and `worst` is the least clear the zone ever gets
+ * across the shot. A moving subject that enters the zone at t=3 would otherwise
+ * be recorded as a clear frame. Both are rounded, because these bytes are
+ * compared for determinism and raw doubles carry noise that means nothing.
+ */
+function safeZoneMetadata(
+  scene: Scene,
+  shot: Shot,
+  evaluator: ShotEvaluator
+): Record<string, unknown> | null {
+  const rect = resolveSafeZone(shot.safeZone)
+  if (!rect || !shot.safeZone) return null
+  const round = (n: number): number => Math.round(n * 1000) / 1000
+  // Measured off the live scene graph, so the figure in the package matches
+  // the pixels the package ships rather than a catalog approximation.
+  const measured = getSceneManager()?.entityWorldBounds()
+  const first = analyzeSafeZone(scene, shot, evaluator.evaluate(0), measured)
+  const worst = worstSafeZone(scene, shot, (t) => evaluator.evaluate(t), measured)
+  return {
+    preset: shot.safeZone.preset,
+    // Normalized, origin top-left, so it composites onto any export size.
+    rect: { x: round(rect.x), y: round(rect.y), w: round(rect.w), h: round(rect.h) },
+    negativeSpace: round(first?.negativeSpace ?? 1),
+    worst: worst
+      ? {
+          time: round(worst.time),
+          negativeSpace: round(worst.report.negativeSpace),
+          intruders: worst.report.intruders.map((i) => ({
+            subject: i.name,
+            coverage: round(i.coverage)
+          }))
+        }
+      : null,
+    // Measured from subject bounding boxes, which are larger than the subjects,
+    // so this never claims more free space than the render has.
+    measuredFrom: 'subjectBounds',
+    promptDirective: safeZonePhrase(shot.safeZone)
+  }
+}
+
 function buildMetadata(
   scene: Scene,
   shot: Shot,
@@ -215,7 +266,12 @@ function buildMetadata(
       sensor: shot.camera.sensorId,
       rig: shot.camera.rig,
       rigIntensity: shot.camera.rigIntensity,
-      seed: shot.camera.seed
+      seed: shot.camera.seed,
+      // AW fork: the reserved headline region, and how clear it actually is.
+      // A downstream operator gets the rect to composite against and the
+      // worst-case figure to trust; the audit flagged the absence of any
+      // safe-zone record here.
+      safeZone: safeZoneMetadata(scene, shot, evaluator)
     },
     cameraMarks: [...shot.camera.marks]
       .sort((a, b) => a.time - b.time)

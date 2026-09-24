@@ -12,6 +12,7 @@ import { ASSET_CATALOG, assetSpec } from '@engine/assets'
 import { createActorMark, createCameraMark } from '@engine/schema'
 import { newId } from '@engine/ids'
 import { isAspectId } from '@engine/camera'
+import { clampRect, isSafeZonePresetId } from '@engine/safe-zone'
 import { clampScale, normalizeStretch, setPitchRoll, stretchOf } from '@engine/transform'
 import { renderStillPngForTest } from '../export/exporter'
 import { getSceneManager } from '../export/scene-access'
@@ -97,6 +98,16 @@ function summary(): unknown {
           duration: shot.duration,
           fps: shot.fps,
           aspect: shot.aspect,
+          // AW fork: report the zone only when one is set, so an agent reading
+          // this can tell "no zone reserved" from "a zone that is clear".
+          ...(shot.safeZone
+            ? {
+                safeZone: {
+                  preset: shot.safeZone.preset,
+                  ...(shot.safeZone.rect ? { rect: shot.safeZone.rect } : {})
+                }
+              }
+            : {}),
           camera: shot.cameraName ?? 'A',
           cameraMarks: shot.camera.marks.map((m, i) => ({
             index: i + 1,
@@ -326,6 +337,30 @@ async function execute(action: string, params: Params): Promise<unknown> {
         // copy of the list, so any aspect added elsewhere was silently
         // rejected here while the UI happily offered it.
         if (isAspectId(aspect)) shot.aspect = aspect
+        // AW fork: the headline safe zone. 'off' clears it; a preset id sets
+        // it; 'custom' needs the four rect percentages. Anything else is
+        // ignored rather than throwing, matching how this handler treats every
+        // other field.
+        const zone = str(params, 'safeZone')
+        if (zone === 'off') {
+          delete shot.safeZone
+        } else if (zone === 'custom') {
+          const pct = (key: string, fallback: number): number => {
+            const v = flt(params, key)
+            return v === undefined ? fallback : v / 100
+          }
+          shot.safeZone = {
+            preset: 'custom',
+            rect: clampRect({
+              x: pct('zoneX', 0),
+              y: pct('zoneY', 0),
+              w: pct('zoneW', 40),
+              h: pct('zoneH', 100)
+            })
+          }
+        } else if (isSafeZonePresetId(zone)) {
+          shot.safeZone = { preset: zone }
+        }
       })
       return { ok: true }
     }
