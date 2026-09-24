@@ -162,7 +162,7 @@ const TOOLS = [
         aspect: {
           type: 'string',
           description:
-            'Aspect ratio: "2.39:1", "2:1", "16:9", "3:2", "4:3", "1:1", "4:5" or "9:16".'
+            'Aspect ratio: "12:5", "2.39:1", "2:1", "16:9", "3:2", "4:3", "6:5", "1:1", "4:5" or "9:16". AW email heroes at 600 wide: 6:5 is 600x500, 3:2 is 600x400, 2:1 is 600x300, 12:5 is 600x250.'
         },
         fps: { type: 'number', description: 'Frames per second.' },
         safeZone: {

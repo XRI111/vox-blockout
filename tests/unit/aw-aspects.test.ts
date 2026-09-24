@@ -33,6 +33,41 @@ describe('the aspect set', () => {
     expect(ASPECT_RATIOS['4:5']).toBeCloseTo(0.8)
   })
 
+  it('reaches all four confirmed email hero sizes at a 600px content width', () => {
+    // AW's email spec, confirmed 2026-09-23: 600 wide, heroes up to 500 tall.
+    // These four sizes are the deliverable, so each has to be one preset away
+    // rather than something a designer arrives at by arithmetic.
+    const image = getProfile('gpt-image-2')
+    expect(exportDims(image, '6:5', { widthPx: 600 })).toEqual({ width: 600, height: 500 })
+    expect(exportDims(image, '3:2', { widthPx: 600 })).toEqual({ width: 600, height: 400 })
+    expect(exportDims(image, '2:1', { widthPx: 600 })).toEqual({ width: 600, height: 300 })
+    expect(exportDims(image, '12:5', { widthPx: 600 })).toEqual({ width: 600, height: 250 })
+  })
+
+  it('doubles cleanly, because the spec says design at 2x for retina', () => {
+    const image = getProfile('gpt-image-2')
+    expect(exportDims(image, '6:5', { widthPx: 1200 })).toEqual({ width: 1200, height: 1000 })
+    expect(exportDims(image, '12:5', { widthPx: 1200 })).toEqual({ width: 1200, height: 500 })
+  })
+
+  it('keeps 12:5 distinct from 2.39:1, which is a different ratio', () => {
+    // The cinema ratio is close enough to look interchangeable and is not: at
+    // 600 wide it gives 251, which evens to 252 and misses the spec by 2px.
+    expect(ASPECT_RATIOS['12:5']).toBeCloseTo(2.4)
+    expect(ASPECT_RATIOS['12:5']).not.toBeCloseTo(ASPECT_RATIOS['2.39:1'], 2)
+    const image = getProfile('gpt-image-2')
+    expect(exportDims(image, '2.39:1', { widthPx: 600 }).height).not.toBe(250)
+  })
+
+  it('never reports a hero taller than the spec allows at 600 wide', () => {
+    // Heroes cap at 500 tall. Any ratio at or above 6:5 satisfies that, and the
+    // ones below it are the social slots, not heroes.
+    const image = getProfile('gpt-image-2')
+    for (const a of ['6:5', '3:2', '2:1', '12:5'] as AspectId[]) {
+      expect(exportDims(image, a, { widthPx: 600 }).height, a).toBeLessThanOrEqual(500)
+    }
+  })
+
   it('lists every ratio exactly once, widest to tallest', () => {
     // The ordering is what the UI pickers render, so it is part of the
     // contract rather than incidental.
@@ -71,9 +106,10 @@ describe('the aspect set', () => {
 describe('generator profiles', () => {
   it('offers the new ratios on image models, which is the AW path', () => {
     for (const p of BUILTIN_PROFILES.filter((x) => x.kind === 'image')) {
-      expect(p.aspects, p.id).toContain('2:1')
-      expect(p.aspects, p.id).toContain('3:2')
-      expect(p.aspects, p.id).toContain('4:5')
+      // Every email hero size plus the portrait social slot.
+      for (const a of ['12:5', '2:1', '3:2', '6:5', '4:5']) {
+        expect(p.aspects, `${p.id}:${a}`).toContain(a)
+      }
     }
   })
 

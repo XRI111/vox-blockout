@@ -71,7 +71,10 @@ AlchemyWorx internal fork changes (2026), by **AlchemyWorx**:
   handoff), `control/handler.ts` (MCP reads and writes the pose).
 - Delivery aspects and arbitrary export width (`src/engine/camera.ts`,
   `src/engine/types.ts`, `src/renderer/export/exporter.ts`). `AspectId` gains
-  2:1 and 3:2 for email heroes and 4:5 for the portrait social slot, and
+  five ratios: 12:5, 2:1, 3:2 and 6:5 are the four email hero sizes AW confirmed
+  on 2026-09-23 at a 600px content width (600x250, 600x300, 600x400, 600x500),
+  and 4:5 is the portrait social slot. 12:5 is not a rename of 2.39:1, which
+  gives 600x252. Also
   `ExportResolution` gains `{ widthPx }` for an exact pixel width, replacing a
   three-way enum whose ceiling was a 1536 long edge. Height derives from the
   shot's aspect rather than being typed separately, because the viewport mask,

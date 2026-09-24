@@ -29,10 +29,15 @@ export const ASPECT_RATIOS: Record<AspectId, number> = {
   '2.39:1': 2.39,
   '4:3': 4 / 3,
   '1:1': 1,
-  // AW fork: 2:1 and 3:2 for email heroes, 4:5 for the portrait social slot.
+  // AW fork: the four email hero sizes AW confirmed on 2026-09-23, at a 600px
+  // content width and exported at 2x — 600x250 is 12:5, 600x300 is 2:1,
+  // 600x400 is 3:2, 600x500 is 6:5 — plus 4:5 for the portrait social slot.
+  // 12:5 is not 2.39:1: the cinema ratio gives 600x251, which rounds to 252.
   '2:1': 2,
   '3:2': 3 / 2,
-  '4:5': 4 / 5
+  '4:5': 4 / 5,
+  '6:5': 6 / 5,
+  '12:5': 12 / 5
 }
 
 /**
@@ -41,7 +46,18 @@ export const ASPECT_RATIOS: Record<AspectId, number> = {
  * of the list and the MCP validator silently rejected anything the other two
  * had gained.
  */
-export const ASPECT_IDS: AspectId[] = ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16']
+export const ASPECT_IDS: AspectId[] = [
+  '12:5',
+  '2.39:1',
+  '2:1',
+  '16:9',
+  '3:2',
+  '4:3',
+  '6:5',
+  '1:1',
+  '4:5',
+  '9:16'
+]
 
 /** Narrow an untrusted string to an AspectId. */
 export function isAspectId(v: unknown): v is AspectId {

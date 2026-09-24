@@ -77,6 +77,19 @@ test('an email hero renders at exactly the requested pixel size', async () => {
   expect(got).toEqual({ w: 1200, h: 600 })
 })
 
+test('every confirmed email hero size renders at 2x', async () => {
+  // AW's spec, confirmed 2026-09-23: 600 wide, heroes to 500 tall, designed at
+  // 2x. Decoded from the PNG rather than trusting the numbers requested.
+  for (const [aspect, w, h] of [
+    ['6:5', 1200, 1000],
+    ['3:2', 1200, 800],
+    ['2:1', 1200, 600],
+    ['12:5', 1200, 500]
+  ] as [string, number, number][]) {
+    expect(await renderedSize(aspect, w, h), aspect).toEqual({ w, h })
+  }
+})
+
 test('the portrait social ratio renders at its own size', async () => {
   const got = await renderedSize('4:5', 1080, 1350)
   expect(got).toEqual({ w: 1080, h: 1350 })
@@ -116,7 +129,7 @@ test('every aspect in the picker is one the engine knows', async () => {
   const bad = await page.evaluate(() => {
     const w = window as unknown as { __blockout: any }
     const s = w.__blockout.store.getState()
-    const ids = ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16']
+    const ids = ['12:5', '2.39:1', '2:1', '16:9', '3:2', '4:3', '6:5', '1:1', '4:5', '9:16']
     const failures: string[] = []
     for (const a of ids) {
       s.mutate('aspect', (doc: any) => {

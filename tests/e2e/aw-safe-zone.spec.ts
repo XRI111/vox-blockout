@@ -347,7 +347,8 @@ test('the pure projection matches the renderer camera at every pose', async () =
 test('every delivery ratio projects consistently, including the ones item 5 added', async () => {
   // Aspect enters the engine's maths only through the horizontal half-angle.
   // A ratio missing from that path would show as drift here and nowhere else.
-  for (const aspect of ['2.39:1', '2:1', '16:9', '3:2', '4:3', '1:1', '4:5', '9:16']) {
+  // Covers all ten, including 6:5 and 12:5 from AW's confirmed email spec.
+  for (const aspect of ['12:5', '2.39:1', '2:1', '16:9', '3:2', '4:3', '6:5', '1:1', '4:5', '9:16']) {
     const drift = await projectionDrift({
       camX: -1,
       camY: 1.7,
