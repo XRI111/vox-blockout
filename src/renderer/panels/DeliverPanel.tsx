@@ -14,7 +14,10 @@ import {
   exportContactSheet,
   exportDims,
   exportStillAtPlayhead,
-  type ExportResolution
+  type ExportResolution,
+  isCustomResolution,
+  CUSTOM_WIDTH_MIN,
+  CUSTOM_WIDTH_MAX
 } from '../export/exporter'
 import { exportGlb } from '../export/gltf'
 
@@ -34,6 +37,9 @@ export function DeliverPanel(): JSX.Element {
   const [passes, setPasses] = useState({ clean: true, depth: true, normal: false })
   const [labels, setLabels] = useState<'on' | 'stillsOnly' | 'off'>('stillsOnly')
   const [resolution, setResolution] = useState<ExportResolution>('auto')
+  // Remembered separately so toggling away from Custom and back keeps the
+  // number the user typed.
+  const [customWidth, setCustomWidth] = useState(1200)
 
   const profile = getProfile(profileId)
   const prompt = useMemo(
@@ -145,8 +151,38 @@ export function DeliverPanel(): JSX.Element {
           >
             1080p
           </button>
+          <button
+            className={isCustomResolution(resolution) ? 'active' : ''}
+            onClick={() => setResolution({ widthPx: customWidth })}
+            title="Type an exact pixel width; height follows the shot's aspect"
+          >
+            Custom
+          </button>
         </div>
       </div>
+
+      {isCustomResolution(resolution) && (
+        <div className="field">
+          <label>Width (px)</label>
+          <input
+            type="number"
+            step={2}
+            min={CUSTOM_WIDTH_MIN}
+            max={CUSTOM_WIDTH_MAX}
+            value={customWidth}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              if (!Number.isFinite(v)) return
+              setCustomWidth(v)
+              setResolution({ widthPx: v })
+            }}
+          />
+          <p className="hint" style={{ color: 'var(--text-dim)' }}>
+            Height follows the shot&apos;s aspect ({shot.aspect}), so the export matches what the
+            viewport framed. Need a size no ratio covers? Change the shot aspect.
+          </p>
+        </div>
+      )}
 
       <div className="field">
         <label>Labels</label>

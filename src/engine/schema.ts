@@ -20,6 +20,7 @@ import type {
   V3
 } from './types'
 import { normalizeStretch } from './transform'
+import { isAspectId } from './camera'
 import { normalizeProjectRelativePath } from '../shared/portable-paths'
 
 export const SCHEMA_VERSION = 1 as const
@@ -269,6 +270,13 @@ function migrateProject(doc: ProjectDoc): ProjectDoc {
           : undefined
       )
       if (!entity.transform.stretch) delete entity.transform.stretch
+    }
+    // AW fork: aspect was never validated, so a hand-edited or
+    // forward-versioned file put an unknown string into ASPECT_RATIOS and got
+    // NaN through the camera, the export dims and the top-down diagram with
+    // nothing reporting it. Degrade to 16:9 rather than reject the project.
+    for (const shot of scene.shots) {
+      if (!isAspectId(shot.aspect)) shot.aspect = '16:9'
     }
     const raw = (scene as { scans?: unknown }).scans
     if (!Array.isArray(raw)) {

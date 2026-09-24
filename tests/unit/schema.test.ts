@@ -204,3 +204,27 @@ describe('AW static pose migration', () => {
     expect('stretch' in parsed!.scenes[0]!.entities[0]!.transform).toBe(false)
   })
 })
+
+describe('AW aspect validation on load', () => {
+  it('degrades an unknown aspect to 16:9 instead of poisoning the camera', () => {
+    // Before this, aspect was never validated: a hand-edited or
+    // forward-versioned file put an unknown key into ASPECT_RATIOS, and the
+    // undefined it returned became NaN in the camera FOV, the export
+    // dimensions and the top-down diagram, with nothing reporting it.
+    const doc = createProject('BadAspect')
+    const raw = JSON.parse(serializeProject(doc)) as {
+      scenes: Array<{ shots: Array<Record<string, unknown>> }>
+    }
+    raw.scenes[0]!.shots[0]!.aspect = '5:4'
+    const { doc: parsed, issues } = parseProject(JSON.stringify(raw))
+    expect(issues).toEqual([])
+    expect(parsed!.scenes[0]!.shots[0]!.aspect).toBe('16:9')
+  })
+
+  it('leaves a newly added aspect alone', () => {
+    const doc = createProject('NewAspect')
+    doc.scenes[0]!.shots[0]!.aspect = '2:1'
+    const { doc: parsed } = parseProject(serializeProject(doc))
+    expect(parsed!.scenes[0]!.shots[0]!.aspect).toBe('2:1')
+  })
+})
