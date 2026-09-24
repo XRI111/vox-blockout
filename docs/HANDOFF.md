@@ -312,6 +312,12 @@ order.
    (`types.ts:67`). Adding ratios touches the union, `ASPECT_RATIOS`, two UI lists, the MCP control
    handler, every profile's `aspects` array, and the schema migration.
 
+   **Email spec landed after this was scoped** (Answered questions, 2026-09-23): 600 wide, heroes to
+   500 tall, exported at 2x, with named sizes 600x500, 600x400, 600x300 and 600x250. Two of those are
+   the ratios above (600x400 is 3:2, 600x300 is 2:1). **600x500 is 6:5 and 600x250 is 12:5, and
+   neither is in the set** — 2.39:1 is the cinema ratio and gives 600x252, not 600x250. Both need
+   adding for the spec to be reachable by preset rather than by arithmetic.
+
 6. **Headline safe-zone overlay.** Presets left third, right third, top band, bottom band, custom
    rect. Viewport overlay, negative-space percentage, written into `prompt.txt` and `metadata.json`.
    Store the rect on the shot so `state(t)` stays pure.
@@ -404,13 +410,16 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 - Written output: no em dashes, no filler, active voice.
 - Don't run a named Claude skill without asking first.
 
+## Answered questions (2026-09-23, Stephane)
+1. **Email spec:** emails are 600px wide. Heroes are up to 500px tall. Design at 2x for retina (up to 1200x1000). Aspect presets should be built around 600 wide and heights up to 500 (for example 600x500, 600x400, 600x300, 600x250), plus the social ratios already listed. No standard headline placement: it varies per email, so the safe-zone presets (left, right, top, bottom, custom) must all stay available and be chosen per shot.
+2. **Models:** no fixed models. AW uses whichever model does the job best. Generator profiles must stay easy to add and swap; don't hard-wire one model.
+3. **Biaggi CAD/3D:** none available now. Use the next options in the 3D source order: image-to-3D, phone scan, or the parametric proxy. The parametric proxy is the default path.
+4. **Hero color:** not chosen yet. Build the proxy with color as a swappable option (Black, Navy Blue, Grey, Pink).
+5. **Pilot:** Stephane.
+6. **App name:** ALXStudio. Rename not yet applied to the app. Apply per the attribution rules (keep `NOTICE`, credit Sam Wasserman).
+
 ## Open questions (for Stephane)
-1. AW's standard email hero dimensions and headline placement conventions?
-2. Which image and video models does AW use in production?
-3. Does Biaggi have CAD/3D files or high-res product photography beyond the website?
-4. Approve or replace the draft shot list? Which Runway color is the hero?
-5. Who on the AW team pilots the tool?
-6. Final internal app name?
+1. Approve or replace the draft shot list?
 
 ## Status log
 | Date | Status | Notes |
@@ -424,3 +433,5 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 | 2026-09-22 | Item 1 shipped, verified | Env-gated software GL. `src/shared/software-gl.ts` (new, pure, unit-tested) plus two lines in `src/main/index.ts`. Default off. Verified in this container: flag off gives `NO WEBGL`, flag on gives WebGL 2.0 through SwiftShader, and `BLOCKOUT_SOFTWARE_GL=1 npm run smoke` is 6/6. typecheck, lint and 890/890 unit tests green. Logged in `MODIFICATIONS.md`. Branch `aw/software-gl`. |
 | 2026-09-22 | Item 2 shipped, verified | Imported models now reach exports. Found and fixed a bigger bug than the planned race: the Library imports in two mutations (addEntity, then attach `sourceFile`), and the load only fired on visual creation, so an imported GLB stayed invisible for the whole session until the project was reopened. Added `ensureCustomModel` (idempotent, guards retry storms) plus `settleAsyncLoads()` awaited by `exportShot`, `exportStillAtPlayhead` and `exportContactSheet`. `GLTFLoader.parse` now has an error callback so a malformed file cannot wedge an export. `.obj` removed from the import picker: one line against ~15 to wire `OBJLoader`, and the picker was advertising a format that always failed to parse. New `tests/e2e/import-await.spec.ts` builds a minimal GLB fixture, exports in the same tick as the import, and decodes the PNG with ffmpeg to assert the mesh's own colour is in frame 0. Verified it fails with either fix removed. typecheck, lint, 890/890 unit, 72/73 e2e green (`perf.spec.ts` needs a GPU). Branch `aw/import-await`. |
 | 2026-09-22 | Item 3 shipped, verified | Generic parametric product system. Pure engine module `src/engine/products.ts` resolves a data preset plus a state into metre-space primitives; `src/renderer/viewport/product-builder.ts` just draws them. Three archetypes (rounded box, capped cylinder, tapered tube), optional hinged door or lid with an independent secondary fold, attachable parts (handle with stops, wheels, feet, cap, pump), and compound multi-piece presets with relative offsets. Presets are JSON (`src/engine/products.json`), overridable per project from `<project>/products/*.json`. Scale-aware: grid cell, gizmo snap and both camera near planes derive from the scene, and the shot camera's near plane comes from the document only, never selection, so exported pixels stay independent of editor state. Six presets ship, all dimensions verified against biaggi.com on 2026-09-22: Runway 22x14x8 expanding to 10.5, Zipcube 13.5x9.5x3, Zipcube Mini 7x7x4, plus generic compact, lipstick tube and a compound bottle-warmer sample. 40 new unit tests; 930/930 total. Two geometry bugs found and fixed by those tests: signed-zero angles, and wheels not lifting the shell onto the ground (a 20.4in shell on 1.6in wheels is a 22in bag). A third, the laptop flap hinging inside the panel instead of on its free edge, was caught in the clay render and fixed. Branch `aw/product-system`. Stopped here for Stephane's review of the stills. |
+| 2026-09-23 | Baseline passing | Added `scripts/aw-verify.mjs` (run `node scripts/aw-verify.mjs`). On macOS Darwin 24.6.0, Node 22.23.1: typecheck, lint, unit tests, smoke, and app launch passed. Manual UI test by Stephane pending. |
+| 2026-09-23 | Decisions recorded | Email spec, model policy, no Biaggi CAD, pilot owner, and app name (ALXStudio) recorded under Answered questions. Rename not yet applied. |
