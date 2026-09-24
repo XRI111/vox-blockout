@@ -1,3 +1,4 @@
+// Modified for the AlchemyWorx internal fork (2026); see MODIFICATIONS.md.
 /**
  * Context-sensitive right panel. Content is driven by store.selection and the
  * current mode: nothing selected → scene/lighting/shot; an entity, the shot
@@ -16,6 +17,19 @@ import { MOTION_PRESETS, type MotionPreset } from '@engine/motions'
 import { CAMERA_MOVE_PRESETS } from '@engine/camera-moves'
 import { ACTION_PRESETS } from '@engine/action-presets'
 import { getProduct, isProductAssetId, presetIdFromAssetId } from '@engine/products'
+import {
+  ROTATION_SNAP_DEG,
+  SCALE_MAX,
+  SCALE_MIN,
+  STRETCH_MAX,
+  STRETCH_MIN,
+  clampScale,
+  clampStretch,
+  isProportional,
+  normalizeStretch,
+  setPitchRoll,
+  stretchOf
+} from '@engine/transform'
 import { ShotEvaluator } from '@engine/evaluate'
 import { newId } from '@engine/ids'
 import { getSceneManager } from '../export/scene-access'
@@ -661,17 +675,49 @@ function EntityInspector({
             />
           </div>
         </div>
-        <div className="field">
-          <label>Rotation°</label>
-          <input
-            type="number"
-            step={1}
-            value={toDeg(entity.transform.rotationY)}
-            onChange={(e) => {
-              const v = num(e.target.value)
-              if (v !== null) editEntity('rotate entity', (en) => (en.transform.rotationY = toRad(v)))
-            }}
-          />
+        <div className="field-row">
+          <div className="field" style={{ flex: 1 }}>
+            <label title="Tilt forward or back, around X">Pitch°</label>
+            <input
+              type="number"
+              step={ROTATION_SNAP_DEG}
+              value={toDeg(entity.transform.rotationX ?? 0)}
+              onChange={(e) => {
+                const v = num(e.target.value)
+                if (v !== null)
+                  editEntity('rotate entity', (en) =>
+                    setPitchRoll(en.transform, toRad(v), en.transform.rotationZ ?? 0)
+                  )
+              }}
+            />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label title="Heading — which way it faces, around Y">Yaw°</label>
+            <input
+              type="number"
+              step={ROTATION_SNAP_DEG}
+              value={toDeg(entity.transform.rotationY)}
+              onChange={(e) => {
+                const v = num(e.target.value)
+                if (v !== null) editEntity('rotate entity', (en) => (en.transform.rotationY = toRad(v)))
+              }}
+            />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label title="Roll it onto its side, around Z">Roll°</label>
+            <input
+              type="number"
+              step={ROTATION_SNAP_DEG}
+              value={toDeg(entity.transform.rotationZ ?? 0)}
+              onChange={(e) => {
+                const v = num(e.target.value)
+                if (v !== null)
+                  editEntity('rotate entity', (en) =>
+                    setPitchRoll(en.transform, en.transform.rotationX ?? 0, toRad(v))
+                  )
+              }}
+            />
+          </div>
         </div>
         {productStates.length > 1 && (
           <div className="field">
@@ -693,20 +739,7 @@ function EntityInspector({
             </select>
           </div>
         )}
-        <div className="field">
-          <label>Scale ({entity.transform.scale.toFixed(2)})</label>
-          <input
-            type="range"
-            min={0.3}
-            max={3}
-            step={0.01}
-            value={entity.transform.scale}
-            onChange={(e) => {
-              const v = num(e.target.value)
-              if (v !== null) editEntity('scale entity', (en) => (en.transform.scale = v))
-            }}
-          />
-        </div>
+        <ScaleFields entity={entity} editEntity={editEntity} />
         {isPerson && (
           <>
             <div className="field">
@@ -2164,5 +2197,114 @@ function MarkPoseSection({
         </button>
       </details>
     </div>
+  )
+}
+
+/**
+ * AW fork: scale controls.
+ *
+ * The old UI was a single slider clamped 0.3 to 3.0, which could neither type
+ * an exact number nor fix an imported GLB authored in the wrong unit. Two
+ * controls replace it, and the split is deliberate:
+ *
+ * - `Scale` is the object's real-world size multiplier. `entityHeight` reads
+ *   it, so auto-framing, label placement and the top-down diagram follow it.
+ * - `Stretch X/Y/Z` corrects a proxy that is off in one dimension without
+ *   restating its nominal size. Locked by default so it behaves like a plain
+ *   proportional resize until you deliberately unlock it.
+ *
+ * Stretching does distort attached parts — a wheel goes oval if you squash the
+ * shell — which is an accepted trade under the dimensional-accuracy rule,
+ * because product appearance reaches the image model through reference photos
+ * rather than through this geometry.
+ */
+function ScaleFields({
+  entity,
+  editEntity
+}: {
+  entity: Entity
+  editEntity: (label: string, fn: (e: Entity) => void) => void
+}): JSX.Element {
+  const stretch = stretchOf(entity.transform)
+  const [locked, setLocked] = useState(() => isProportional(entity.transform))
+
+  const setStretch = (axis: 'x' | 'y' | 'z', raw: number): void => {
+    const v = clampStretch(raw)
+    editEntity('stretch entity', (en) => {
+      const cur = stretchOf(en.transform)
+      const next = locked ? { x: v, y: v, z: v } : { ...cur, [axis]: v }
+      const norm = normalizeStretch(next)
+      if (norm) en.transform.stretch = norm
+      else delete en.transform.stretch
+    })
+  }
+
+  const axes: Array<{ key: 'x' | 'y' | 'z'; label: string; hint: string }> = [
+    { key: 'x', label: 'X', hint: 'Width' },
+    { key: 'y', label: 'Y', hint: 'Height' },
+    { key: 'z', label: 'Z', hint: 'Depth' }
+  ]
+
+  return (
+    <>
+      <div className="field">
+        <label title="Real-world size multiplier — auto-framing and labels read this">
+          Scale
+        </label>
+        <input
+          type="number"
+          step={0.05}
+          min={SCALE_MIN}
+          max={SCALE_MAX}
+          value={entity.transform.scale}
+          onChange={(e) => {
+            const v = num(e.target.value)
+            if (v !== null) editEntity('scale entity', (en) => (en.transform.scale = clampScale(v)))
+          }}
+        />
+      </div>
+      <div className="field-row">
+        {axes.map((a) => (
+          <div className="field" style={{ flex: 1 }} key={a.key}>
+            <label title={`${a.hint} multiplier on top of Scale`}>Stretch {a.label}</label>
+            <input
+              type="number"
+              step={0.01}
+              min={STRETCH_MIN}
+              max={STRETCH_MAX}
+              value={Number(stretch[a.key].toFixed(3))}
+              onChange={(e) => {
+                const v = num(e.target.value)
+                if (v !== null) setStretch(a.key, v)
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="field">
+        <label>
+          <input
+            type="checkbox"
+            checked={locked}
+            onChange={(e) => {
+              const on = e.target.checked
+              setLocked(on)
+              // Locking an already-distorted proxy would silently keep the
+              // distortion while claiming proportions were intact, so collapse
+              // it back to the mean of the three axes.
+              if (on && !isProportional(entity.transform)) {
+                const mean = (stretch.x + stretch.y + stretch.z) / 3
+                editEntity('lock proportions', (en) => {
+                  const norm = normalizeStretch({ x: mean, y: mean, z: mean })
+                  if (norm) en.transform.stretch = norm
+                  else delete en.transform.stretch
+                })
+              }
+            }}
+          />{' '}
+          Lock proportions
+        </label>
+      </div>
+    </>
   )
 }

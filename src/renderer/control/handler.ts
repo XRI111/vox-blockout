@@ -11,6 +11,7 @@ import { useStore } from '../store'
 import { ASSET_CATALOG, assetSpec } from '@engine/assets'
 import { createActorMark, createCameraMark } from '@engine/schema'
 import { newId } from '@engine/ids'
+import { clampScale, normalizeStretch, setPitchRoll, stretchOf } from '@engine/transform'
 import { renderStillPngForTest } from '../export/exporter'
 import { getSceneManager } from '../export/scene-access'
 import type { AspectId, GaitId } from '@engine/types'
@@ -66,6 +67,12 @@ function summary(): unknown {
             y: e.transform.position.y,
             z: e.transform.position.z,
             rotationDeg: toDeg(e.transform.rotationY),
+            // AW fork: pitch, roll and per-axis stretch are only reported when
+            // set, so a scene of upright props reads exactly as it used to.
+            ...(e.transform.rotationX ? { pitchDeg: toDeg(e.transform.rotationX) } : {}),
+            ...(e.transform.rotationZ ? { rollDeg: toDeg(e.transform.rotationZ) } : {}),
+            scale: e.transform.scale,
+            ...(e.transform.stretch ? { stretch: e.transform.stretch } : {}),
             label: e.label?.text,
             attachedTo: e.attachedTo,
             markCount: take?.tracks.find((t) => t.entityId === e.id)?.marks.length ?? 0
@@ -198,6 +205,32 @@ async function execute(action: string, params: Params): Promise<unknown> {
           if (y !== undefined) e.transform.position.y = y
           if (z !== undefined) e.transform.position.z = z
           if (rotationDeg !== undefined) e.transform.rotationY = toRad(rotationDeg)
+          // AW fork: static pitch, roll and scale. Marks still carry yaw only,
+          // so this poses an entity, it does not animate one.
+          const pitchDeg = flt(params, 'pitchDeg')
+          const rollDeg = flt(params, 'rollDeg')
+          if (pitchDeg !== undefined || rollDeg !== undefined) {
+            setPitchRoll(
+              e.transform,
+              pitchDeg !== undefined ? toRad(pitchDeg) : (e.transform.rotationX ?? 0),
+              rollDeg !== undefined ? toRad(rollDeg) : (e.transform.rotationZ ?? 0)
+            )
+          }
+          const scale = flt(params, 'scale')
+          if (scale !== undefined) e.transform.scale = clampScale(scale)
+          const sx = flt(params, 'stretchX')
+          const sy = flt(params, 'stretchY')
+          const sz = flt(params, 'stretchZ')
+          if (sx !== undefined || sy !== undefined || sz !== undefined) {
+            const cur = stretchOf(e.transform)
+            const next = normalizeStretch({
+              x: sx ?? cur.x,
+              y: sy ?? cur.y,
+              z: sz ?? cur.z
+            })
+            if (next) e.transform.stretch = next
+            else delete e.transform.stretch
+          }
         }
       })
       if (!found) throw new Error(`No entity "${entityId}" — call get_state for ids.`)

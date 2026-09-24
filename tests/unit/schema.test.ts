@@ -10,6 +10,7 @@ import {
 import { generatePrompt } from '@engine/prompt'
 import { getProfile, BUILTIN_PROFILES } from '@engine/profiles'
 import { createActorMark, createCameraMark } from '@engine/schema'
+import { effectiveScale, rotationOf } from '@engine/transform'
 
 describe('schema round-trip', () => {
   it('serialize → parse reproduces the document exactly', () => {
@@ -133,5 +134,73 @@ describe('prompt generation', () => {
 
   it('unknown profile ids fall back to the first builtin', () => {
     expect(getProfile('nope').id).toBe(BUILTIN_PROFILES[0]!.id)
+  })
+})
+
+/**
+ * AW fork: the pose fields are additive, so the thing to prove is that they
+ * cost a pre-existing project nothing. A document written before they existed
+ * must parse to the identity pose AND must not gain keys on the way back out,
+ * or every old project shows a spurious diff the first time it is opened.
+ */
+describe('AW static pose migration', () => {
+  it('a document with no pose fields parses upright and unstretched', () => {
+    const doc = createProject('Old')
+    const e = createEntity('prop.suitcase', 'Bag', { x: 0, y: 0, z: 0 })
+    doc.scenes[0]!.entities.push(e)
+    const raw = JSON.parse(serializeProject(doc)) as {
+      scenes: Array<{ entities: Array<Record<string, unknown>> }>
+    }
+    // Simulate a pre-fork file: no rotationX / rotationZ / stretch anywhere.
+    const t = raw.scenes[0]!.entities[0]!.transform as Record<string, unknown>
+    expect('rotationX' in t).toBe(false)
+    expect('stretch' in t).toBe(false)
+
+    const { doc: parsed, issues } = parseProject(JSON.stringify(raw))
+    expect(issues).toEqual([])
+    const pt = parsed!.scenes[0]!.entities[0]!.transform
+    expect(rotationOf(pt)).toEqual({ x: 0, y: 0, z: 0 })
+    expect(effectiveScale(pt)).toEqual({ x: 1, y: 1, z: 1 })
+    // And it did not gain keys, so re-saving produces no phantom diff.
+    expect('rotationX' in pt).toBe(false)
+    expect('stretch' in pt).toBe(false)
+  })
+
+  it('a posed entity survives serialize → parse unchanged', () => {
+    const doc = createProject('Posed')
+    const e = createEntity('product.biaggi.runway-carry-on', 'Runway', { x: 0, y: 0, z: 0 })
+    e.transform.rotationX = Math.PI / 2
+    e.transform.rotationZ = -Math.PI / 4
+    e.transform.stretch = { x: 1, y: 1.08, z: 0.95 }
+    doc.scenes[0]!.entities.push(e)
+    const { doc: parsed, issues } = parseProject(serializeProject(doc))
+    expect(issues).toEqual([])
+    expect(parsed).toEqual(doc)
+  })
+
+  it('junk in the pose fields degrades to upright instead of rejecting the file', () => {
+    const doc = createProject('Junk')
+    doc.scenes[0]!.entities.push(createEntity('prop.crate', 'Crate', { x: 0, y: 0, z: 0 }))
+    const raw = JSON.parse(serializeProject(doc)) as {
+      scenes: Array<{ entities: Array<{ transform: Record<string, unknown> }> }>
+    }
+    raw.scenes[0]!.entities[0]!.transform.rotationX = 'sideways'
+    raw.scenes[0]!.entities[0]!.transform.stretch = { x: 1, y: null }
+    const { doc: parsed, issues } = parseProject(JSON.stringify(raw))
+    expect(issues).toEqual([])
+    const pt = parsed!.scenes[0]!.entities[0]!.transform
+    expect('rotationX' in pt).toBe(false)
+    expect(effectiveScale(pt)).toEqual({ x: 1, y: 1, z: 1 })
+  })
+
+  it('an identity stretch on disk is dropped, not preserved as noise', () => {
+    const doc = createProject('Identity')
+    doc.scenes[0]!.entities.push(createEntity('prop.crate', 'Crate', { x: 0, y: 0, z: 0 }))
+    const raw = JSON.parse(serializeProject(doc)) as {
+      scenes: Array<{ entities: Array<{ transform: Record<string, unknown> }> }>
+    }
+    raw.scenes[0]!.entities[0]!.transform.stretch = { x: 1, y: 1, z: 1 }
+    const { doc: parsed } = parseProject(JSON.stringify(raw))
+    expect('stretch' in parsed!.scenes[0]!.entities[0]!.transform).toBe(false)
   })
 })

@@ -1,3 +1,4 @@
+// Modified for the AlchemyWorx internal fork (2026); see MODIFICATIONS.md.
 /**
  * SceneManager — the imperative three.js world behind the Viewport.
  *
@@ -27,12 +28,21 @@ import {
 } from '@engine/camera'
 import { assetSpec, entityHeight } from '@engine/assets'
 import { isProductAssetId } from '@engine/products'
+import {
+  ENTITY_EULER_ORDER,
+  effectiveScale,
+  heightScale,
+  rotationOf,
+  setPitchRoll,
+  splitScaleVector
+} from '@engine/transform'
 import { headingOf } from '@engine/path'
 import { CAMERA_MOVE_PRESETS } from '@engine/camera-moves'
 import type { Entity, LightingPresetId, Scene as DocScene, Shot } from '@engine/types'
 import { useStore, selectedEntityIds } from '../store'
 import { on } from '../bus'
 import { buildAsset, markMesh, labelSprite, type BuiltAsset } from './builders'
+import { groundLiftFor } from './ground-lift'
 
 const RAD2DEG = 180 / Math.PI
 
@@ -63,6 +73,15 @@ interface EntityVisual {
   customSource?: string
   /** The loaded glTF root, removed before a replacement is added. */
   customObject?: THREE.Object3D
+  /**
+   * AW fork: metres this visual was lifted so a tilted object still rests on
+   * `transform.position.y`. Assets are built with their origin at the ground,
+   * and rotating about that origin drives half the body underground, so the
+   * ground contact is restored here instead. The document keeps the clean
+   * value, which is why anything reading `root.position.y` back into the
+   * document (the gizmo commit) has to subtract this first.
+   */
+  groundLift?: number
 }
 
 export type RenderPass = 'clean' | 'depth' | 'normal'
@@ -657,8 +676,11 @@ export class SceneManager {
     for (const e of this.docScene?.entities ?? []) {
       if (!isProductAssetId(e.assetId)) continue
       const spec = assetSpec(e.assetId)
-      const scale = e.transform.scale || 1
-      const extent = Math.min(spec.height, spec.footprint * 2) * scale
+      // AW fork: the smallest axis after per-axis stretch, so squashing a
+      // proxy thinner still pulls the near plane in with it.
+      const s = effectiveScale(e.transform)
+      const thinnest = Math.min(s.x, s.y, s.z)
+      const extent = Math.min(spec.height * s.y, spec.footprint * 2 * thinnest)
       if (extent > 0) smallest = Math.min(smallest, extent)
     }
     return clamp(smallest, 0.005, 1)
@@ -742,9 +764,47 @@ export class SceneManager {
   private applyEntityBase(visual: EntityVisual): void {
     const t = visual.entity.transform
     visual.root.position.set(t.position.x, t.position.y, t.position.z)
-    visual.root.rotation.y = t.rotationY
-    visual.root.scale.setScalar(t.scale)
+    // AW fork: full static pose. YXZ order keeps rotationY meaning heading
+    // whatever the pitch and roll are; the engine owns that convention so the
+    // .glb handoff resolves the identical matrix.
+    const r = rotationOf(t)
+    visual.root.rotation.order = ENTITY_EULER_ORDER
+    visual.root.rotation.set(r.x, r.y, r.z)
+    const s = effectiveScale(t)
+    visual.root.scale.set(s.x, s.y, s.z)
     visual.built.setTint(visual.entity.label?.color ?? null)
+    this.applyStaticTilt(visual)
+  }
+
+  /**
+   * AW fork: apply the document's static pitch and roll, then restore ground
+   * contact.
+   *
+   * This exists as its own method because there are TWO places that pose an
+   * entity: `applyEntityBase` on a store sync, and the per-frame evaluator
+   * loop, which rewrites position and heading every tick. The first version of
+   * this work only handled the first, so a tilt typed into the Inspector was
+   * applied and then silently overwritten one frame later — the same shape of
+   * bug as the imported GLB that stayed invisible because only one of two
+   * mutation paths triggered the load. Both paths call this now.
+   *
+   * An untilted entity returns immediately, so every existing scene keeps the
+   * exact code path and cost it had before.
+   */
+  private applyStaticTilt(visual: EntityVisual): void {
+    const t = visual.entity.transform
+    const pitch = t.rotationX ?? 0
+    const roll = t.rotationZ ?? 0
+    visual.groundLift = 0
+    if (pitch === 0 && roll === 0) return
+    visual.root.rotation.order = ENTITY_EULER_ORDER
+    visual.root.rotation.x = pitch
+    visual.root.rotation.z = roll
+    const lift = groundLiftFor(visual.root, t.position.y)
+    if (lift !== 0) {
+      visual.root.position.y += lift
+      visual.groundLift = lift
+    }
   }
 
   private syncLabel(visual: EntityVisual): void {
@@ -1123,6 +1183,7 @@ export class SceneManager {
     if (inField) return
     if (e.key === 'g' || e.key === 'G') this.setGizmoMode('translate')
     if (e.key === 'r' || e.key === 'R') this.setGizmoMode('rotate')
+    if (e.key === 's' || e.key === 'S') this.setGizmoMode('scale')
     if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
       e.preventDefault()
       this.duplicateSelection()
@@ -1181,24 +1242,21 @@ export class SceneManager {
     return null
   }
 
-  /** Set the gizmo mode; entities rotate around Y only (they stay upright). */
-  setGizmoMode(mode: 'translate' | 'rotate'): void {
+  /**
+   * Set the gizmo mode. AW fork: entities used to be locked to yaw, so the
+   * rotate gizmo hid its X and Z rings. Staging a product needs a full static
+   * pose (a carry-on on its side, a compact tipped), and correcting a proxy
+   * needs scale, so all three modes now show all three axes.
+   */
+  setGizmoMode(mode: 'translate' | 'rotate' | 'scale'): void {
     this.transform.setMode(mode)
     this.applyGizmoAxisLimits()
   }
 
   private applyGizmoAxisLimits(): void {
-    const sel = this.currentState().selection
-    const isEntity = sel?.kind === 'entity' || sel?.kind === 'entities'
-    if (this.transform.mode === 'rotate' && isEntity) {
-      this.transform.showX = false
-      this.transform.showZ = false
-      this.transform.showY = true
-    } else {
-      this.transform.showX = true
-      this.transform.showY = true
-      this.transform.showZ = true
-    }
+    this.transform.showX = true
+    this.transform.showY = true
+    this.transform.showZ = true
   }
 
   private syncSelection(): void {
@@ -1368,7 +1426,18 @@ export class SceneManager {
       pos: anchorVisual.root.position.clone(),
       rotY: anchorVisual.root.rotation.y
     }
-    const scale = anchorVisual.root.scale.x
+    // Undo the ground lift before this becomes a document value, or each
+    // rotate would bank the previous lift and the object would climb.
+    anchorNow.pos.y -= anchorVisual.groundLift ?? 0
+    // AW fork: the anchor carries the full pose out of the drag. Followers in
+    // a group keep the yaw-only rigid mapping below, because that is what the
+    // choreography marks they drag along with can represent.
+    const anchorPose = {
+      rotX: anchorVisual.root.rotation.x,
+      rotZ: anchorVisual.root.rotation.z,
+      scale: anchorVisual.root.scale.clone()
+    }
+
     const dragStart = this.dragStart
     this.dragStart = null
     this.dragAnchorId = null
@@ -1403,9 +1472,22 @@ export class SceneManager {
               }
             }
           } else {
-            entity.transform.position = { x: next.pos.x, y: Math.max(0, next.pos.y), z: next.pos.z }
+            entity.transform.position = {
+              x: next.pos.x,
+              y: Math.max(0, next.pos.y),
+              z: next.pos.z
+            }
             entity.transform.rotationY = next.rotY
-            if (id === anchorId) entity.transform.scale = scale
+            if (id === anchorId) {
+              // AW fork: pitch, roll and per-axis scale come off the anchor.
+              // Identity collapses back to absent so an untouched entity keeps
+              // writing the same JSON it always did.
+              setPitchRoll(entity.transform, anchorPose.rotX, anchorPose.rotZ)
+              const split = splitScaleVector(anchorPose.scale, entity.transform.scale)
+              entity.transform.scale = split.scale
+              if (split.stretch) entity.transform.stretch = split.stretch
+              else delete entity.transform.stretch
+            }
           }
           // Choreography rides along: a performer's MARKS define where it
           // is, so moving the body without its path would just snap back.
@@ -1589,7 +1671,7 @@ export class SceneManager {
     const entity = this.docScene!.entities.find((e) => e.id === subjectId)
     if (!es || !entity) return
 
-    const subjectHeight = entityHeight(entity.assetId, entity.transform.scale, entity.params)
+    const subjectHeight = entityHeight(entity.assetId, heightScale(entity.transform), entity.params)
     const lens = this.currentLens()
     const { distance, targetHeight } = frameSubjectMath(
       size,
@@ -1653,7 +1735,7 @@ export class SceneManager {
       out.push({
         id: e.id,
         pos: new THREE.Vector3(es.position.x, es.position.y, es.position.z),
-        height: entityHeight(e.assetId, e.transform.scale, e.params)
+        height: entityHeight(e.assetId, heightScale(e.transform), e.params)
       })
     }
     return out
@@ -1882,7 +1964,7 @@ export class SceneManager {
           ? { x: es.position.x, y: es.position.y, z: es.position.z, heading: es.heading }
           : { x: subject.pos.x, y: subject.pos.y, z: subject.pos.z, heading: 0 }
       },
-      subjectHeight: entityHeight(entity.assetId, entity.transform.scale, entity.params),
+      subjectHeight: entityHeight(entity.assetId, heightScale(entity.transform), entity.params),
       camera: {
         x: cam0.position.x,
         y: cam0.position.y,
@@ -2173,6 +2255,11 @@ export class SceneManager {
         visual.root.position.y = visual.entity.transform.position.y
       }
       visual.root.rotation.y = es.heading
+      // AW fork: the lines above rewrite position and heading from state(t)
+      // every frame, so the document's static pitch and roll — and the ground
+      // contact they need — have to be re-applied right here or they last
+      // exactly one frame.
+      this.applyStaticTilt(visual)
       // Stage-level pose (params.pose: a person sits on the bus without any
       // marks) and manual joint offsets (params.joint_*: fight/dance poses).
       const params = visual.entity.params

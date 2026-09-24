@@ -1,6 +1,6 @@
 # AW Previs Fork: Build Handoff
 **Location in repo:** `docs/aw/HANDOFF.md` | **Created:** 2026-09-21 | **Owner:** Stephane Gringer (Fractional CMO, AlchemyWorx)
-**Status line (keep current):** Baselined and audited 2026-09-22, all gates green. Scope changed the same day: dimensional accuracy over product fidelity, generic archetypes over product-specific code. Phase 1 rewritten to 7 items, building items 1 to 3 now, stopping after 3 for Stephane's review of the clay stills.
+**Status line (keep current):** Baselined and audited 2026-09-22, all gates green. Scope: dimensional accuracy over product fidelity, generic archetypes over product-specific code. Phase 1 items 1 to 4 shipped. Item 4b (full static entity pose: pitch, roll, per-axis scale) shipped 2026-09-24 on Stephane's go-ahead; animated rotation deferred. Items 5 to 7 not started.
 
 This is a living document. Claude Code: read it at the start of every session, and update the Status Log at the bottom the moment anything runs, ships, or breaks, with an honest status ("built, untested", "smoke passing", "blocked on X"). One source of truth: edit sections in place, don't append duplicates.
 
@@ -239,15 +239,12 @@ so both are recorded rather than silently dropped.
   (`exporter.ts:409`) names the file from shot, playhead time and a second-resolution timestamp, so
   exporting the same frame twice inside one second silently replaces the first. Cost me a wrong test
   result before I spotted it. One-line fix whenever that file is next open.
-- **Entities cannot pitch or roll, only yaw.** `Transform` carries `rotationY`
-  alone (`types.ts:76-78`, "Entities are upright"), and marks add only
-  `arriveHeading`, which is yaw again. Pilot shot 4 wants the Runway lying on
-  its side sliding into an overhead bin, and shot 3 wants a laptop tipping into
-  a tray; neither is stageable today. The bin and tray props from item 4 are
-  correct and the bag fits, but it can only be posed standing beside them.
-  Adding `rotationX`/`rotationZ` is a schema change plus a migration and a
-  gizmo change, so it is a Phase 1 scope question for Stephane rather than
-  something to slip into a props item.
+- ~~**Entities cannot pitch or roll, only yaw.**~~ **Fixed 2026-09-24** (item
+  4b). `Transform` now carries optional `rotationX` / `rotationZ` and a
+  per-axis `stretch`; see the Build plan item below. Marks still carry
+  `arriveHeading` only, so this is a static pose, not animation: a bag can be
+  laid on its side for a still, but it cannot tip over across a shot. Stephane
+  deferred animated rotation on 2026-09-24.
 - **`perf.spec.ts` cannot run under software GL.** It asserts 50 entities hold >50 fps and SwiftShader
   manages 2.4. Expected, not a regression: run it on a machine with a GPU. CI's `native-smoke` job
   does not include it.
@@ -316,6 +313,18 @@ order.
    extend rather than duplicate: `env.planeCabin` already has closed bins (`builders.ts:3827-3830`) and
    `env.airportTerminal` already exists (`builders.ts:4958-4997`).
 
+4b. **Full static entity pose.** Owner decision 2026-09-24: Stephane needs
+   movement on all axes, rotation, and scale that can correct a proxy that is
+   off in one dimension without re-rendering. Static only; animating rotation
+   across marks is deferred. Position was already a full V3 with X/Y/Z fields
+   and an unconstrained translate gizmo, so the work is rotation plus the scale
+   UI. `rotationY` stays the heading field and rotation applies in YXZ order;
+   `scale` stays the one real-world multiplier `entityHeight` consumes, with
+   per-axis `stretch` separate. 15° rotation snap approved, and a tilted object
+   re-seats on the ground rather than sinking through it. Distorting attached
+   parts (an oval wheel on a squashed shell) is an accepted trade: appearance
+   reaches the image model through reference photos, not through this geometry.
+
 5. **Arbitrary export resolution, plus 2:1, 3:2 and 4:5 added to the aspect set.** `ExportResolution`
    is a three-way enum today (`exporter.ts:20`) and `AspectId` is a closed five-value union
    (`types.ts:67`). Adding ratios touches the union, `ASPECT_RATIOS`, two UI lists, the MCP control
@@ -349,6 +358,7 @@ day carries its reason.
 | 2 | Await model loads, `.obj` decision | 0.5d | |
 | 3 | Generic parametric product system | 3d | Five subsystems, not one: archetype builders, the part-attachment model, compound composition, a JSON preset loader with project override, and scale-awareness. Scale-awareness alone reaches the viewport grid, the camera near-clip, snapping and the auto-framing path, all of which assume human scale today. Plus five presets and engine tests. |
 | 4 | Cheap props and sets | 1d | |
+| 4b | Full static entity pose | 0.5d | Owner-added 2026-09-24. Static only; animated rotation deferred. |
 | 5 | Arbitrary resolution + 3 aspect ratios | 1d | |
 | 6 | Headline safe-zone overlay | 1.5d | The rect lives on the shot, so it needs a schema field, a migration and a round-trip test, then five consumers: viewport overlay, negative-space computation, `engine/prompt.ts`, `metadata.json`, and the aspect-aware overlay layout. Each consumer needs its own test. |
 | 7 | Small-product camera check | 0.5d | Report only, no fix. |
@@ -397,6 +407,9 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 | **Dimensional accuracy, not product fidelity** (Stephane, 2026-09-22) | Primitives at correct real-world dimensions are enough. Geometry controls scale, silhouette, placement and composition; the image model gets product appearance from reference images. Chasing likeness in the mesh buys nothing the references do not already give us | Fidelity spike, image-to-3D, photogrammetry of a physical sample, clay override on imported models |
 | **Generic archetypes, no product-specific code** (Stephane, 2026-09-22) | The tool has to carry luggage (Biaggi), cosmetics (Laura Geller, Julep) and odd-shaped appliances (Baby Brezza) without a new builder per client. Three archetypes plus attachable parts plus compound composition covers all three categories | A bespoke parametric luggage generator; per-client builder cases in `builders.ts` |
 | **Products are data presets, not code** (Stephane, 2026-09-22) | JSON in a presets folder, overridable per project. Adding a client's product is an edit a non-engineer can make, matching how generator profiles already work | Hardcoding each product into `assets.ts` and `builders.ts` |
+| **Static pose now, animation later** (Stephane, 2026-09-24) | Stills are the pilot. A full static pose (pitch, roll, per-axis scale) costs half a day; interpolating pitch and roll across marks reaches `state(t)`, choreography and every action preset, costs 2d or more, and puts byte-determinism back in play for no benefit to a still | Adding pitch/roll to marks now; leaving entities yaw-only |
+| **`rotationY` stays the heading field** (Claude, 2026-09-24) | Roughly thirty call sites read it as facing — choreography, marriage offsets, the MCP bridge, the top-down diagram. Pitch and roll are separate fields applied in YXZ order, so a tilted object's heading still means what every one of them assumes | Replacing `rotationY` with a rotation V3; Euler XYZ order |
+| **`scale` stays one number, `stretch` is separate** (Claude, 2026-09-24) | `entityHeight` and the auto-framing, label placement and top-down diagram that consume it need a single real-world multiplier. A proportional resize moves `scale`; a one-axis correction moves `stretch`, and vertical stretch folds back into the reported height so framing stays honest | Making `scale` a V3 |
 | **GLB import is the escape hatch, and must be solid** (Stephane, 2026-09-22) | Archetypes will not cover every shape. Import already renders into exports; it needs the load race fixed and the `.obj` promise resolved | Unit-aware scaling and clay override, both cut as fidelity work |
 
 ## Gotchas
@@ -445,3 +458,4 @@ Pipeline per shot: stage in the app, export the stills package, attach Biaggi pr
 | 2026-09-22 | Item 4 shipped, verified | Cheap props and sets. Four new props at real-world sizes: `prop.securityTray` (0.66 x 0.42 x 0.10, takes a laptop), `prop.overheadBin` (0.62 x 1.22 x 0.42, door hinged on the top inboard edge so it opens into the aisle), `prop.vanityCounter` (1.2 x 0.55, surface at 0.86, mirror above) and `prop.seamlessSweep` (1.2 x 0.9, rising 1.0 on a 0.35 radius, extruded from a side profile so the curve is one surface). Extended rather than duplicated: `buildProp` and `buildEnv` now receive entity `params`, `env.planeCabin` takes `params.bins = 'open'`, and the bin geometry is one helper shared by the kit and the standalone prop. Three modelling errors caught before shipping: the sweep was translated a half-width off the origin so a product at x=0 stood beside it, the vanity declared 1.71 m and built 1.66, and the bin door and back wall were on swapped faces so it opened into the fuselage. New `tests/e2e/aw-props.spec.ts` measures built geometry against a pinned size table and checks origin centring, sweep orientation, door direction, and that the cabin param actually changes pixels; `tests/unit/aw-props.test.ts` pins the catalog to the same numbers so drift on either side fails. typecheck, lint, 941/941 unit, 77/78 e2e green (`perf.spec.ts` needs a GPU). Branch `aw/props-sets`. |
 | 2026-09-23 | Baseline passing | Added `scripts/aw-verify.mjs` (run `node scripts/aw-verify.mjs`). On macOS Darwin 24.6.0, Node 22.23.1: typecheck, lint, unit tests, smoke, and app launch passed. Manual UI test by Stephane pending. |
 | 2026-09-23 | Decisions recorded | Email spec, model policy, no Biaggi CAD, pilot owner, and app name (ALXStudio) recorded under Answered questions. Rename not yet applied. |
+| 2026-09-24 | Item 4b shipped, verified | Full static entity pose, on Stephane's go-ahead: static now, animated rotation deferred. Position already worked (full V3, X/Y/Z fields, unconstrained translate gizmo) — corrected that in the thread rather than building it twice. New pure engine module `src/engine/transform.ts` owns the conventions: `Transform` gains optional `rotationX`, `rotationZ` and a per-axis `stretch`; rotation applies in YXZ so `rotationY` keeps meaning heading for the ~30 call sites that read it that way; `scale` stays the one real-world multiplier `entityHeight` consumes, with a proportional gizmo drag moving `scale` and a one-axis drag moving `stretch`. Vertical stretch folds back into the reported height so auto-framing stays honest. Inspector replaces a 0.3-3.0 slider with pitch/yaw/roll fields, a numeric scale and per-axis stretch with a proportions lock; rotate gizmo unlocked to all three axes, scale mode added (`S`), 15° snap was already in place. New `src/renderer/viewport/ground-lift.ts`: assets are built origin-at-ground, so a tilt would drive half the object underground — the rendered object is lifted back to its support height while the document keeps the clean value. One real bug found by the e2e and fixed: the per-frame evaluator loop rewrites position and heading every tick, so the first version's tilt survived exactly one frame (same shape as the invisible-GLB bug); both pose paths now call one helper. Same pose applied in the `.glb` handoff. MCP `get_state`/`move_entity` read and write the pose. 25 new unit tests (966/966 total) plus `tests/e2e/aw-transform.spec.ts` measuring world bounding boxes. typecheck, lint, 86/93 e2e (only `perf.spec.ts`, which needs a GPU), `BLOCKOUT_SOFTWARE_GL=1 npm run smoke` 6/6 including byte-determinism. Branch `aw/transform`. |
